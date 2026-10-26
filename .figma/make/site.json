@@ -1,0 +1,10 @@
+{
+  "description": "Connects tutors, parents, and students through a comprehensive platform offering scheduling, coaching, and admin tools to streamline tuition management.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

@@ -1,0 +1,187 @@
+import { useEffect, useState } from 'react'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router'
+import { ArrowRight, CheckCircle2, KeyRound, LifeBuoy, LockKeyhole, LogOut, Mail, ShieldCheck, ShieldAlert, Clock, FileSearch, AlertTriangle, Loader2 } from 'lucide-react'
+import { Button, btnClass, Card, Chip, DemoTag, Field, Input, OtpInput, StatusChip, Textarea, cx } from '../../components/ui'
+import { AuthCard, AuthHead, Notice } from './Layout'
+import { PasswordInput } from './Login'
+import { StrengthMeter } from './Signup'
+import { useStore } from '../../lib/store'
+import { DEMO_2FA, DEMO_PASSWORD, maskEmail, strength, validEmail } from '../../lib/validate'
+import { verifyPath, ROLES, type Role } from '../../lib/nav'
+
+export function Forgot() {
+  const nav = useNavigate(); const [email, setEmail] = useState(''); const [touched, setTouched] = useState(false); const [busy, setBusy] = useState(false)
+  const err = !email ? 'Enter the email you signed up with.' : !validEmail(email) ? 'This email looks incomplete. Use a format like name@example.com.' : ''
+  return (
+    <AuthCard>
+      <AuthHead icon={<KeyRound size={22} strokeWidth={1.5} aria-hidden />} title="Forgot your password?" lead="Enter your email and we will send a reset link." />
+      <form noValidate className="space-y-5" onSubmit={(e) => { e.preventDefault(); setTouched(true); if (err) return; setBusy(true); setTimeout(() => nav('/forgot/sent', { state: { email } }), 700) }}>
+        <Field label="Email" error={touched ? err : ''}>{(id) => <Input id={id} type="email" autoComplete="email" aria-invalid={touched && !!err} value={email} onChange={(e) => setEmail(e.target.value)} />}</Field>
+        <Button type="submit" loading={busy} className="w-full">{busy ? 'Sending…' : 'Send reset link'}</Button>
+      </form>
+      <p className="mt-6 text-center text-sm"><Link to="/login" className="font-semibold text-blue-600 hover:underline">Back to log in</Link> · <Link to="/recover" className="font-semibold text-blue-600 hover:underline">Lost phone or email?</Link></p>
+    </AuthCard>
+  )
+}
+
+export function ForgotSent() {
+  const { state } = useLocation() as { state?: { email?: string } }; const nav = useNavigate(); const [resent, setResent] = useState(false)
+  if (!state?.email) return <Navigate to="/forgot" replace />
+  return (
+    <AuthCard>
+      <AuthHead tone="green" icon={<Mail size={22} strokeWidth={1.5} aria-hidden />} title="Reset link sent" lead={<>If an account exists for <strong className="text-navy-900">{maskEmail(state.email)}</strong>, a reset link is on its way. It expires in 30 minutes.</>} />
+      {resent && <div className="mb-4"><Notice tone="green">Another link was sent.</Notice></div>}
+      <div className="rounded-card border border-dashed border-warning-600 bg-warning-100 p-3">
+        <DemoTag label="Demo" /><p className="mt-2 text-xs text-gray-600">No email is sent. Open the link here.</p>
+        <Button size="sm" className="mt-3" onClick={() => nav('/reset')}>Open reset link <ArrowRight size={14} aria-hidden /></Button>
+      </div>
+      <Button variant="secondary" className="mt-4 w-full" onClick={() => setResent(true)}>Resend link</Button>
+      <p className="mt-4 text-center text-sm"><Link to="/login" className="font-semibold text-blue-600 hover:underline">Back to log in</Link></p>
+    </AuthCard>
+  )
+}
+
+export function Reset() {
+  const nav = useNavigate(); const [pw, setPw] = useState(''); const [pw2, setPw2] = useState(''); const [touched, setTouched] = useState(false); const [busy, setBusy] = useState(false)
+  const e1 = strength(pw).score < 3 ? 'Choose a stronger password: 8+ characters with upper and lower case, plus a number or symbol.' : ''
+  const e2 = pw2 !== pw ? 'The two passwords do not match.' : ''
+  return (
+    <AuthCard>
+      <AuthHead icon={<LockKeyhole size={22} strokeWidth={1.5} aria-hidden />} title="Set a new password" lead="Pick something you have not used before." />
+      <form noValidate className="space-y-4" onSubmit={(e) => { e.preventDefault(); setTouched(true); if (e1 || e2) return; setBusy(true); setTimeout(() => nav('/reset/done'), 700) }}>
+        <Field label="New password" error={touched ? e1 : ''}>{(id) => <PasswordInput id={id} auto="new-password" value={pw} onChange={setPw} invalid={touched && !!e1} />}</Field>
+        <StrengthMeter pw={pw} />
+        <Field label="Confirm new password" error={touched || pw2 ? e2 : ''}>{(id) => <PasswordInput id={id} auto="new-password" value={pw2} onChange={setPw2} invalid={!!(touched || pw2) && !!e2} />}</Field>
+        <Button type="submit" loading={busy} className="w-full">{busy ? 'Saving…' : 'Reset password'}</Button>
+      </form>
+    </AuthCard>
+  )
+}
+
+export function ResetDone() {
+  return (
+    <AuthCard>
+      <AuthHead tone="green" icon={<CheckCircle2 size={24} aria-hidden />} title="Password updated" lead="You can now log in with your new password. Other devices were signed out." />
+      <Link to="/login" className={btnClass('primary') + ' w-full'}>Log in</Link>
+    </AuthCard>
+  )
+}
+
+const PROBLEMS = [['phone', 'I lost access to my phone number'], ['email', 'I lost access to my email'], ['both', 'I lost access to both']]
+export function Recover() {
+  const [kind, setKind] = useState('phone'); const [name, setName] = useState(''); const [contact, setContact] = useState(''); const [note, setNote] = useState('')
+  const [touched, setTouched] = useState(false); const [busy, setBusy] = useState(false); const [ref, setRef] = useState('')
+  const err = { name: name.trim().length < 2 ? 'Enter the name on the account.' : '', contact: !validEmail(contact) ? 'Enter a contact email we can reach you on (not the lost one).' : '', note: note.trim().length < 15 ? `Tell us a little more (${note.trim().length}/15).` : '' }
+  if (ref) return (
+    <AuthCard>
+      <AuthHead tone="green" icon={<LifeBuoy size={24} aria-hidden />} title="Request received" lead="A support reviewer will contact you within two working days." />
+      <div className="rounded-card bg-gray-100 p-4 text-sm"><p className="text-gray-600">Reference</p><p className="tabular font-mono text-lg font-bold text-navy-900">{ref}</p></div>
+      <p className="mt-3 text-xs text-gray-600"><DemoTag label="Demo" /> <span className="ml-1">No documents are collected and no real request is created.</span></p>
+      <Link to="/" className={btnClass('secondary') + ' mt-5 w-full'}>Back to home</Link>
+    </AuthCard>
+  )
+  return (
+    <AuthCard>
+      <AuthHead icon={<LifeBuoy size={22} strokeWidth={1.5} aria-hidden />} title="Account recovery" lead="Locked out of your phone or email? Tell us what happened and a person will help." />
+      <form noValidate className="space-y-4" onSubmit={(e) => { e.preventDefault(); setTouched(true); if (Object.values(err).some(Boolean)) return; setBusy(true); setTimeout(() => setRef(`REC-${2026}-${Math.floor(1000 + Math.random() * 9000)}`), 800) }}>
+        <fieldset><legend className="mb-2 text-sm font-medium text-charcoal-900">What happened?</legend>
+          <div className="space-y-2">{PROBLEMS.map(([v, l]) => <label key={v} className={cx('flex cursor-pointer items-center gap-3 rounded-input border p-3 text-sm', kind === v ? 'border-blue-600 bg-blue-100' : 'border-gray-200')}><input type="radio" name="kind" checked={kind === v} onChange={() => setKind(v)} className="accent-blue-600" />{l}</label>)}</div></fieldset>
+        <Field label="Name on the account" error={touched ? err.name : ''}>{(id) => <Input id={id} value={name} onChange={(e) => setName(e.target.value)} />}</Field>
+        <Field label="Contact email" error={touched ? err.contact : ''} hint="We will reply here.">{(id) => <Input id={id} type="email" value={contact} onChange={(e) => setContact(e.target.value)} />}</Field>
+        <Field label="Details" error={touched ? err.note : ''}>{(id) => <Textarea id={id} rows={3} value={note} onChange={(e) => setNote(e.target.value)} />}</Field>
+        <Button type="submit" loading={busy} className="w-full">{busy ? 'Submitting…' : 'Submit request'}</Button>
+      </form>
+      <p className="mt-5 text-center text-sm"><Link to="/login" className="font-semibold text-blue-600 hover:underline">Back to log in</Link></p>
+    </AuthCard>
+  )
+}
+
+export function Logout() {
+  const { signedIn, signOut, toast } = useStore(); const [done, setDone] = useState(!signedIn); const [busy, setBusy] = useState(false)
+  if (done) return (
+    <AuthCard>
+      <AuthHead tone="green" icon={<LogOut size={22} aria-hidden />} title="You're signed out" lead="Your session has ended on this device." />
+      <div className="space-y-3"><Link to="/login" className={btnClass('primary') + ' w-full'}>Log in again</Link><Link to="/" className={btnClass('secondary') + ' w-full'}>Back to home</Link></div>
+    </AuthCard>
+  )
+  return (
+    <AuthCard>
+      <AuthHead icon={<LogOut size={22} strokeWidth={1.5} aria-hidden />} title="Log out of TuitionHub?" lead="Unsaved drafts stay saved. You can log back in any time." />
+      <div className="flex gap-3">
+        <Button variant="secondary" className="flex-1" onClick={() => history.back()}>Stay signed in</Button>
+        <Button className="flex-1" loading={busy} onClick={() => { setBusy(true); setTimeout(() => { signOut(); toast('Signed out'); setDone(true) }, 500) }}>Log out</Button>
+      </div>
+    </AuthCard>
+  )
+}
+
+const GATE: Record<string, { tone: 'green' | 'amber' | 'red' | 'blue'; title: string; body: string; cta: string }> = {
+  not_started: { tone: 'blue', title: 'Complete your verification', body: 'You can look around with a limited, read-only dashboard. Posting, interest and chat unlock after verification.', cta: 'Start verification' },
+  draft: { tone: 'blue', title: 'Finish your verification', body: 'You have a saved draft. Pick up where you left off.', cta: 'Continue verification' },
+  pending: { tone: 'amber', title: 'Verification submitted', body: 'We have your details. A reviewer will look at them shortly.', cta: 'View status' },
+  under_review: { tone: 'amber', title: 'Your verification is under review', body: 'Reviews usually take one to two working days. You will be notified.', cta: 'View status' },
+  rejected: { tone: 'red', title: 'Verification was not approved', body: 'Review the reasons and resubmit with corrected details.', cta: 'See reasons and resubmit' },
+  action_required: { tone: 'amber', title: 'We need more information', body: 'The reviewer asked for an additional detail before they can approve you.', cta: 'Provide information' },
+  verified: { tone: 'green', title: "You're verified", body: 'Everything is unlocked for your role.', cta: 'Go to dashboard' },
+}
+export function Gate() {
+  const { signedIn, role, verification } = useStore(); const nav = useNavigate()
+  const st = verification[role]; const g = GATE[st]
+  const [checking, setChecking] = useState(true)
+  useEffect(() => { const t = setTimeout(() => setChecking(false), 700); return () => clearTimeout(t) }, [])
+  if (!signedIn) return <Navigate to="/login" replace />
+  const label = ROLES.find((r) => r.id === role)?.label ?? role
+  if (checking) return <AuthCard><div className="flex flex-col items-center py-10 text-center" role="status"><Loader2 className="animate-spin text-blue-600" aria-hidden /><p className="mt-4 font-heading font-bold text-navy-900">Checking your account…</p><p className="text-sm text-gray-600">Looking up your role and verification status.</p></div></AuthCard>
+  const verified = st === 'verified'
+  return (
+    <AuthCard>
+      <AuthHead tone={g.tone} icon={verified ? <ShieldCheck size={24} aria-hidden /> : st === 'rejected' ? <ShieldAlert size={24} aria-hidden /> : st === 'under_review' || st === 'pending' ? <Clock size={24} aria-hidden /> : st === 'action_required' ? <AlertTriangle size={24} aria-hidden /> : <FileSearch size={24} aria-hidden />} title={g.title} lead={g.body} />
+      <dl className="mb-6 divide-y divide-gray-100 rounded-card border border-gray-200 text-sm">
+        <div className="flex items-center justify-between px-4 py-3"><dt className="text-gray-600">Signed in as</dt><dd className="font-semibold text-navy-900">{label}</dd></div>
+        <div className="flex items-center justify-between px-4 py-3"><dt className="text-gray-600">Verification</dt><dd><StatusChip state={st} /></dd></div>
+        <div className="flex items-center justify-between px-4 py-3"><dt className="text-gray-600">Access</dt><dd className="font-semibold text-navy-900">{verified ? 'Full' : 'Limited, read-only'}</dd></div>
+      </dl>
+      <div className="space-y-3">
+        <Button className="w-full" onClick={() => nav(verified ? `/app/${role}` : verifyPath(role))}>{g.cta} <ArrowRight size={14} aria-hidden /></Button>
+        {!verified && <Button variant="secondary" className="w-full" onClick={() => nav(`/app/${role}`)}>Explore limited dashboard</Button>}
+      </div>
+      <p className="mt-4 text-center text-xs text-gray-600">Change this status in Demo controls to preview each route.</p>
+    </AuthCard>
+  )
+}
+
+export function AdminLogin() {
+  const { signIn, setRole, toast } = useStore(); const nav = useNavigate()
+  const [step, setStep] = useState<'pw' | '2fa' | 'locked'>('pw'); const [email, setEmail] = useState(''); const [pw, setPw] = useState(''); const [code, setCode] = useState('')
+  const [touched, setTouched] = useState(false); const [busy, setBusy] = useState(false); const [bad, setBad] = useState(''); const [tries, setTries] = useState(0)
+  const go = (fn: () => void) => { setBusy(true); setTimeout(() => { setBusy(false); fn() }, 600) }
+  if (step === 'locked') return <AuthCard><AuthHead tone="red" icon={<ShieldAlert size={24} aria-hidden />} title="Admin sign-in locked" lead="Too many failed attempts. This event has been logged." />
+    <button className="flex w-full items-center justify-center gap-2 text-xs font-semibold text-warning-600 hover:underline" onClick={() => { setStep('pw'); setTries(0); setCode(''); setBad('') }}><DemoTag label="Demo" /> Unlock</button></AuthCard>
+  if (step === '2fa') return (
+    <AuthCard>
+      <AuthHead icon={<ShieldCheck size={22} strokeWidth={1.5} aria-hidden />} title="Two-factor check" lead="Enter the 6-digit code from your authenticator app." />
+      <div className="space-y-5">
+        <OtpInput value={code} onChange={(v) => { setCode(v); setBad('') }} error={!!bad} />
+        {bad && <p role="alert" className="text-sm text-danger-600">{bad}</p>}
+        <Button className="w-full" loading={busy} onClick={() => {
+          if (code.length < 6) return setBad('Enter all 6 digits.')
+          go(() => { if (code === DEMO_2FA) { setRole('admin'); signIn('admin'); toast('Admin session started (demo)', 'success'); nav('/app/admin') } else { const n = tries + 1; setTries(n); setCode(''); if (n >= 3) setStep('locked'); else setBad(`That code is not correct. ${3 - n} ${3 - n === 1 ? 'attempt' : 'attempts'} left.`) } })
+        }}>Verify and continue</Button>
+        <div className="rounded-card border border-dashed border-warning-600 bg-warning-100 p-3 text-sm"><div className="flex items-center justify-between"><DemoTag label="Demo 2FA" /><span className="tabular font-mono text-lg font-bold tracking-widest text-navy-900">{DEMO_2FA}</span></div><button className="mt-2 text-xs font-semibold text-warning-600 hover:underline" onClick={() => setCode(DEMO_2FA)}>Fill code</button></div>
+      </div>
+    </AuthCard>
+  )
+  const eErr = touched && !validEmail(email) ? 'Enter your admin email.' : ''; const pErr = touched && !pw ? 'Enter your password.' : ''
+  return (
+    <AuthCard>
+      <AuthHead icon={<ShieldCheck size={22} strokeWidth={1.5} aria-hidden />} title="Admin sign-in" lead="Staff access only. All sign-ins are logged." />
+      <form noValidate className="space-y-5" onSubmit={(e) => { e.preventDefault(); setTouched(true); setBad(''); if (!validEmail(email) || !pw) return; go(() => { if (email.toLowerCase() === 'admin@demo.tuitionhub.test' && pw === DEMO_PASSWORD) setStep('2fa'); else setBad('Email or password is incorrect.') }) }}>
+        {bad && <Notice>{bad}</Notice>}
+        <Field label="Admin email" error={eErr}>{(id) => <Input id={id} type="email" aria-invalid={!!eErr} value={email} onChange={(e) => setEmail(e.target.value)} />}</Field>
+        <Field label="Password" error={pErr}>{(id) => <PasswordInput id={id} value={pw} onChange={setPw} invalid={!!pErr} />}</Field>
+        <Button type="submit" loading={busy} className="w-full">Continue</Button>
+      </form>
+      <Card className="mt-5 bg-warning-100/60" pad><DemoTag label="Demo" /><p className="mt-2 text-xs text-gray-600">admin@demo.tuitionhub.test · <code>{DEMO_PASSWORD}</code></p><button type="button" className="mt-1 text-xs font-semibold text-warning-600 hover:underline" onClick={() => { setEmail('admin@demo.tuitionhub.test'); setPw(DEMO_PASSWORD) }}>Fill credentials</button></Card>
+    </AuthCard>
+  )
+}
