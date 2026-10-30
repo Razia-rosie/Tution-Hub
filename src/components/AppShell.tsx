@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { NavLink, Outlet, useNavigate, useParams, Navigate, Link } from 'react-router'
-import { Bell, FlaskConical, ShieldCheck, SlidersHorizontal, X, MoreHorizontal, LogOut, Monitor } from 'lucide-react'
+import { Bell, ShieldCheck, X, MoreHorizontal, LogOut, Monitor } from 'lucide-react'
 import { NAV, ROLES, verifyPath, type Role } from '../lib/nav'
 import { useStore } from '../lib/store'
-import { Avatar, Button, Chip, DemoTag, IconButton, Select, StatusChip, cx } from './ui'
+import { Avatar, IconButton, Select, StatusChip, cx } from './ui'
 
 const isRole = (r?: string): r is Role => !!r && r in NAV
 
@@ -19,10 +19,11 @@ export default function AppShell() {
   const s = useStore()
   const [more, setMore] = useState(false)
   const role = isRole(r) ? r : 'tutor'
+  if (s.restoring) return <div role="status" className="flex min-h-screen items-center justify-center bg-offwhite-50 text-sm text-gray-600">Restoring your session…</div>
+  if (!s.signedIn || !s.user) return <Navigate to="/login" replace />
+  if (role !== s.user.role) return <Navigate to={`/app/${s.user.role}`} replace />
   const meta = ROLES.find((x) => x.id === role)!
   const items = NAV[role]
-
-  useEffect(() => { s.signIn(role) /* eslint-disable-next-line */ }, [role])
 
   const vstate = s.verification[role]
   const needsVerify = role !== 'admin' && vstate !== 'verified'
@@ -56,17 +57,12 @@ export default function AppShell() {
       <div className="flex min-w-0 flex-1 flex-col pb-16 md:pb-0">
         <header className="sticky top-0 z-30 flex flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-2.5 md:px-8">
           <Link to="/" className="font-heading font-bold text-navy-900 md:hidden">TuitionHub</Link>
-          <Chip tone="amber" icon={<FlaskConical size={12} aria-hidden />}>Demo data — fictional</Chip>
           <div className="ml-auto flex items-center gap-2">
             {role === 'parent' && (() => { const ck = s.pj.kids.filter((k) => k.link === 'confirmed'); const cur = ck.find((k) => k.short === s.child) ?? ck[0]
               return ck.length === 0 ? <Link to="/app/parent/children/add" className="text-sm font-semibold text-blue-600 hover:underline">Link a child</Link> : (
                 <label className="flex items-center gap-2 text-sm"><span className="hidden text-gray-600 sm:inline">Child</span>
                   <Select aria-label="Child switcher" value={cur.short} onChange={(e) => { s.setChild(e.target.value); s.toast(`Showing ${e.target.value}`, 'info') }} options={ck.map((k) => k.short)} className="!w-auto !py-1.5" />
                 </label>) })()}
-            <label className="hidden items-center gap-2 text-sm lg:flex"><DemoTag label="Demo role" />
-              <Select aria-label="Switch role (demo)" value={role} onChange={(e) => nav(`/app/${e.target.value}`)} options={ROLES.map((x) => x.id)} className="!w-auto !py-1.5 capitalize" />
-            </label>
-            <Button variant="secondary" size="sm" icon={<SlidersHorizontal size={14} />} onClick={() => s.setDrawer(true)}>Demo controls</Button>
             <IconButton label="Notifications" onClick={() => nav(`/app/${role}/notifications`)}><Bell size={20} /></IconButton>
             <Avatar name={meta.persona} size={32} />
           </div>

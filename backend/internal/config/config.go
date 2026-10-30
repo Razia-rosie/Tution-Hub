@@ -14,6 +14,7 @@ type Config struct {
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
 	SecureCookie    bool
+	DocumentDir     string
 }
 
 func Load() (Config, error) {
@@ -25,6 +26,7 @@ func Load() (Config, error) {
 		AccessTokenTTL:  parseDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL: parseDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour),
 		SecureCookie:    os.Getenv("COOKIE_SECURE") == "true",
+		DocumentDir:     get("DOCUMENT_DIR", "private_documents"),
 	}
 	if c.DatabaseURL == "" || len(c.JWTSecret) < 32 {
 		return Config{}, errors.New("DATABASE_URL is required and JWT_SECRET must be at least 32 characters")

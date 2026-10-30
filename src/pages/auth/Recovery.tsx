@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router'
 import { ArrowRight, CheckCircle2, KeyRound, LifeBuoy, LockKeyhole, LogOut, Mail, ShieldCheck, ShieldAlert, Clock, FileSearch, AlertTriangle, Loader2 } from 'lucide-react'
-import { Button, btnClass, Card, Chip, DemoTag, Field, Input, OtpInput, StatusChip, Textarea, cx } from '../../components/ui'
+import { Button, btnClass, Card, Chip, DemoTag, Field, Input, StatusChip, Textarea, cx } from '../../components/ui'
 import { AuthCard, AuthHead, Notice } from './Layout'
 import { PasswordInput } from './Login'
 import { StrengthMeter } from './Signup'
-import { useStore } from '../../lib/store'
-import { DEMO_2FA, DEMO_PASSWORD, maskEmail, strength, validEmail } from '../../lib/validate'
+import { useStore, type VerifyState } from '../../lib/store'
+import { maskEmail, strength, validEmail } from '../../lib/validate'
 import { verifyPath, ROLES, type Role } from '../../lib/nav'
+import { effectiveStatus, getWorkflowDashboard, loginAccount, logoutAccount } from '../../lib/api'
 
 export function Forgot() {
   const nav = useNavigate(); const [email, setEmail] = useState(''); const [touched, setTouched] = useState(false); const [busy, setBusy] = useState(false)
@@ -109,7 +110,19 @@ export function Logout() {
       <AuthHead icon={<LogOut size={22} strokeWidth={1.5} aria-hidden />} title="Log out of TuitionHub?" lead="Unsaved drafts stay saved. You can log back in any time." />
       <div className="flex gap-3">
         <Button variant="secondary" className="flex-1" onClick={() => history.back()}>Stay signed in</Button>
-        <Button className="flex-1" loading={busy} onClick={() => { setBusy(true); setTimeout(() => { signOut(); toast('Signed out'); setDone(true) }, 500) }}>Log out</Button>
+        <Button className="flex-1" loading={busy} onClick={async () => {
+          setBusy(true)
+          try {
+            await logoutAccount()
+            signOut()
+            toast('Signed out', 'success')
+            setDone(true)
+          } catch {
+            toast('We could not end the server session. Please try again.', 'danger')
+          } finally {
+            setBusy(false)
+          }
+        }}>Log out</Button>
       </div>
     </AuthCard>
   )
@@ -122,17 +135,38 @@ const GATE: Record<string, { tone: 'green' | 'amber' | 'red' | 'blue'; title: st
   under_review: { tone: 'amber', title: 'Your verification is under review', body: 'Reviews usually take one to two working days. You will be notified.', cta: 'View status' },
   rejected: { tone: 'red', title: 'Verification was not approved', body: 'Review the reasons and resubmit with corrected details.', cta: 'See reasons and resubmit' },
   action_required: { tone: 'amber', title: 'We need more information', body: 'The reviewer asked for an additional detail before they can approve you.', cta: 'Provide information' },
+  resubmission_required: { tone: 'amber', title: 'Corrections are required', body: 'Review the administrator feedback and submit the corrected information.', cta: 'Update verification' },
+  interview_pending: { tone: 'amber', title: 'Interview required', body: 'Your verification requires an interview before a decision can be made.', cta: 'View status' },
+  interview_scheduled: { tone: 'amber', title: 'Interview scheduled', body: 'Your verification interview has been scheduled.', cta: 'View status' },
+  interview_completed: { tone: 'amber', title: 'Interview completed', body: 'Your interview is complete and your application is awaiting a final decision.', cta: 'View status' },
+  approved: { tone: 'blue', title: 'Complete your profile', body: 'Your verification was approved. Complete the required profile fields to activate your account.', cta: 'Complete profile' },
+  profile_incomplete: { tone: 'blue', title: 'Complete your profile', body: 'Complete the required profile fields before using restricted platform features.', cta: 'Complete profile' },
+  active: { tone: 'green', title: "You're active", body: 'Your account and profile are active.', cta: 'Go to dashboard' },
+  suspended: { tone: 'red', title: 'Account suspended', body: 'Your account is currently suspended. Contact support for assistance.', cta: 'Contact support' },
   verified: { tone: 'green', title: "You're verified", body: 'Everything is unlocked for your role.', cta: 'Go to dashboard' },
 }
 export function Gate() {
-  const { signedIn, role, verification } = useStore(); const nav = useNavigate()
-  const st = verification[role]; const g = GATE[st]
+  const { signedIn, role, verification, setVerification } = useStore(); const nav = useNavigate()
+  const [serverState, setServerState] = useState<string | null>(null)
+  const st = (serverState ?? verification[role]) as keyof typeof GATE
+  const g = GATE[st] ?? GATE.pending
   const [checking, setChecking] = useState(true)
-  useEffect(() => { const t = setTimeout(() => setChecking(false), 700); return () => clearTimeout(t) }, [])
+  useEffect(() => {
+    getWorkflowDashboard()
+      .then((dashboard) => {
+        const next = effectiveStatus(dashboard)
+        setServerState(next)
+        if (next in GATE) setVerification(role, next as VerifyState)
+      })
+      .catch(() => setServerState(null))
+      .finally(() => setChecking(false))
+    // setVerification is recreated on every store update, so it is deliberately not a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role])
   if (!signedIn) return <Navigate to="/login" replace />
   const label = ROLES.find((r) => r.id === role)?.label ?? role
   if (checking) return <AuthCard><div className="flex flex-col items-center py-10 text-center" role="status"><Loader2 className="animate-spin text-blue-600" aria-hidden /><p className="mt-4 font-heading font-bold text-navy-900">Checking your account…</p><p className="text-sm text-gray-600">Looking up your role and verification status.</p></div></AuthCard>
-  const verified = st === 'verified'
+  const verified = st === 'verified' || st === 'active'
   return (
     <AuthCard>
       <AuthHead tone={g.tone} icon={verified ? <ShieldCheck size={24} aria-hidden /> : st === 'rejected' ? <ShieldAlert size={24} aria-hidden /> : st === 'under_review' || st === 'pending' ? <Clock size={24} aria-hidden /> : st === 'action_required' ? <AlertTriangle size={24} aria-hidden /> : <FileSearch size={24} aria-hidden />} title={g.title} lead={g.body} />
@@ -151,37 +185,29 @@ export function Gate() {
 }
 
 export function AdminLogin() {
-  const { signIn, setRole, toast } = useStore(); const nav = useNavigate()
-  const [step, setStep] = useState<'pw' | '2fa' | 'locked'>('pw'); const [email, setEmail] = useState(''); const [pw, setPw] = useState(''); const [code, setCode] = useState('')
-  const [touched, setTouched] = useState(false); const [busy, setBusy] = useState(false); const [bad, setBad] = useState(''); const [tries, setTries] = useState(0)
-  const go = (fn: () => void) => { setBusy(true); setTimeout(() => { setBusy(false); fn() }, 600) }
-  if (step === 'locked') return <AuthCard><AuthHead tone="red" icon={<ShieldAlert size={24} aria-hidden />} title="Admin sign-in locked" lead="Too many failed attempts. This event has been logged." />
-    <button className="flex w-full items-center justify-center gap-2 text-xs font-semibold text-warning-600 hover:underline" onClick={() => { setStep('pw'); setTries(0); setCode(''); setBad('') }}><DemoTag label="Demo" /> Unlock</button></AuthCard>
-  if (step === '2fa') return (
-    <AuthCard>
-      <AuthHead icon={<ShieldCheck size={22} strokeWidth={1.5} aria-hidden />} title="Two-factor check" lead="Enter the 6-digit code from your authenticator app." />
-      <div className="space-y-5">
-        <OtpInput value={code} onChange={(v) => { setCode(v); setBad('') }} error={!!bad} />
-        {bad && <p role="alert" className="text-sm text-danger-600">{bad}</p>}
-        <Button className="w-full" loading={busy} onClick={() => {
-          if (code.length < 6) return setBad('Enter all 6 digits.')
-          go(() => { if (code === DEMO_2FA) { setRole('admin'); signIn('admin'); toast('Admin session started (demo)', 'success'); nav('/app/admin') } else { const n = tries + 1; setTries(n); setCode(''); if (n >= 3) setStep('locked'); else setBad(`That code is not correct. ${3 - n} ${3 - n === 1 ? 'attempt' : 'attempts'} left.`) } })
-        }}>Verify and continue</Button>
-        <div className="rounded-card border border-dashed border-warning-600 bg-warning-100 p-3 text-sm"><div className="flex items-center justify-between"><DemoTag label="Demo 2FA" /><span className="tabular font-mono text-lg font-bold tracking-widest text-navy-900">{DEMO_2FA}</span></div><button className="mt-2 text-xs font-semibold text-warning-600 hover:underline" onClick={() => setCode(DEMO_2FA)}>Fill code</button></div>
-      </div>
-    </AuthCard>
-  )
+  const { setSession, setAuthenticatedUser, toast } = useStore(); const nav = useNavigate()
+  const [email, setEmail] = useState(''); const [pw, setPw] = useState(''); const [touched, setTouched] = useState(false); const [busy, setBusy] = useState(false); const [bad, setBad] = useState('')
   const eErr = touched && !validEmail(email) ? 'Enter your admin email.' : ''; const pErr = touched && !pw ? 'Enter your password.' : ''
   return (
     <AuthCard>
       <AuthHead icon={<ShieldCheck size={22} strokeWidth={1.5} aria-hidden />} title="Admin sign-in" lead="Staff access only. All sign-ins are logged." />
-      <form noValidate className="space-y-5" onSubmit={(e) => { e.preventDefault(); setTouched(true); setBad(''); if (!validEmail(email) || !pw) return; go(() => { if (email.toLowerCase() === 'admin@demo.tuitionhub.test' && pw === DEMO_PASSWORD) setStep('2fa'); else setBad('Email or password is incorrect.') }) }}>
+      <form noValidate className="space-y-5" onSubmit={async (e) => {
+        e.preventDefault(); setTouched(true); setBad('')
+        if (!validEmail(email) || !pw) return
+        setBusy(true)
+        try {
+          const { user, tokens } = await loginAccount(email.trim(), pw)
+          if (user.role !== 'admin') throw new Error('This account is not authorized for administrator access.')
+          setSession(tokens.access_token, tokens.refresh_token); setAuthenticatedUser(user); toast('Administrator session started.', 'success'); nav('/app/admin')
+        } catch (error) {
+          setBad(error instanceof Error ? error.message : 'Administrator sign-in failed.')
+        } finally { setBusy(false) }
+      }}>
         {bad && <Notice>{bad}</Notice>}
         <Field label="Admin email" error={eErr}>{(id) => <Input id={id} type="email" aria-invalid={!!eErr} value={email} onChange={(e) => setEmail(e.target.value)} />}</Field>
         <Field label="Password" error={pErr}>{(id) => <PasswordInput id={id} value={pw} onChange={setPw} invalid={!!pErr} />}</Field>
-        <Button type="submit" loading={busy} className="w-full">Continue</Button>
+        <Button type="submit" loading={busy} className="w-full">Sign in</Button>
       </form>
-      <Card className="mt-5 bg-warning-100/60" pad><DemoTag label="Demo" /><p className="mt-2 text-xs text-gray-600">admin@demo.tuitionhub.test · <code>{DEMO_PASSWORD}</code></p><button type="button" className="mt-1 text-xs font-semibold text-warning-600 hover:underline" onClick={() => { setEmail('admin@demo.tuitionhub.test'); setPw(DEMO_PASSWORD) }}>Fill credentials</button></Card>
     </AuthCard>
   )
 }

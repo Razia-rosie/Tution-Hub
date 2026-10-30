@@ -117,13 +117,14 @@ func logout(s *Service) gin.HandlerFunc {
 	}
 }
 
-func requireAuth(s *Service) gin.HandlerFunc {
+func RequireAuth(s *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := strings.TrimSpace(c.GetHeader("Authorization"))
 		if !strings.HasPrefix(header, "Bearer ") {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authorization required"})
 			return
 		}
+
 		id, err := s.ParseAccessToken(strings.TrimSpace(strings.TrimPrefix(header, "Bearer ")))
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired access token"})
@@ -133,6 +134,8 @@ func requireAuth(s *Service) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+func requireAuth(s *Service) gin.HandlerFunc { return RequireAuth(s) }
 
 func me(s *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {

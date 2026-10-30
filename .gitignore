@@ -20,3 +20,9 @@ logs/
 # beside it.
 /.plugins/
 /.opencode-skills/
+
+# Backend build output (Air) and private verification uploads. Uploaded
+# identity documents must never be committed.
+backend/tmp/
+backend/private_documents/
+private_documents/

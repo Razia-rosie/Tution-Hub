@@ -3,6 +3,7 @@ import TutorPage from './tutor'
 import ParentPage from './parent'
 import StudentPage from './student'
 import CoachingPage from './coaching'
+import AdminPage from './admin'
 import { NAV, ROLES, type Role } from '../lib/nav'
 import { Card, Chip, EmptyState } from '../components/ui'
 import { Construction } from 'lucide-react'
@@ -13,6 +14,7 @@ export default function RolePage() {
   if (role === 'parent' && ParentPage.has(page ?? '')) return ParentPage.render(page ?? '', sub)
   if (role === 'student' && StudentPage.has(page ?? '')) return StudentPage.render(page ?? '', sub)
   if (role === 'coaching' && CoachingPage.has(page ?? '')) return CoachingPage.render(page ?? '', sub)
+  if (role === 'admin' && AdminPage.has(page ?? '')) return AdminPage.render(page ?? '', sub)
   const item = NAV[role as Role]?.find((i) => i.slug === page)
   const meta = ROLES.find((r) => r.id === role)
   if (!item || !meta) return <EmptyState title="Screen not found" body="This route is not part of the role navigation." />

@@ -13,7 +13,7 @@ export const ROLES: { id: Role; label: string; persona: string; blurb: string }[
   { id: 'parent', label: 'Parent / Guardian', persona: 'Farzana Islam', blurb: 'Find a verified tutor, monitor progress' },
   { id: 'student', label: 'Student', persona: 'Nabila Chowdhury', blurb: 'Learn, submit homework, track progress' },
   { id: 'coaching', label: 'Coaching / Institute', persona: 'Scholars Point Coaching', blurb: 'Run batches, classes, exams' },
-  { id: 'admin', label: 'Admin', persona: 'Platform Operations (Demo)', blurb: 'Verify, moderate, audit' },
+  { id: 'admin', label: 'Admin', persona: 'Platform Operations', blurb: 'Verify, moderate, audit' },
 ]
 
 export type NavItem = { slug: string; label: string; icon: LucideIcon; mobile?: boolean }

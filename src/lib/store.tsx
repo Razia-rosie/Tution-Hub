@@ -1,12 +1,13 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Role } from './nav'
 import { setCreatedAccount } from './account'
+import { clearTokens, getCurrentUser, getStoredTokens, saveTokens, type ApiUser } from './api'
 import { initialPJ, initialKJ, DIRECTORY, kidFrom, kjOf, type KJ, type PJ } from './parent'
 import { initialSJ, STUDENT, type SJ } from './student'
 import { initialCJ, initialCV, type CJ, type CV } from './coaching'
 import { initialJourney, activeSeed, allClasses, SYS_MSG, REPLIES, type Journey } from './journey'
 
-export type VerifyState = 'not_started' | 'draft' | 'pending' | 'under_review' | 'verified' | 'rejected' | 'action_required'
+export type VerifyState = 'not_started' | 'draft' | 'pending' | 'under_review' | 'verified' | 'rejected' | 'action_required' | 'resubmission_required' | 'interview_pending' | 'interview_scheduled' | 'interview_completed' | 'approved' | 'profile_incomplete' | 'active' | 'suspended'
 export type Toast = { id: number; text: string; tone: 'info' | 'success' | 'warning' | 'danger' }
 
 export type Signup = { role: Role | null; name: string; email: string; phone: string; phoneVerified: boolean; emailVerified: boolean }
@@ -19,6 +20,7 @@ type State = {
   signup: Signup
   role: Role
   signedIn: boolean
+  user: ApiUser | null
   accessToken: string | null
   refreshToken: string | null
   verification: Record<Role, VerifyState>
@@ -38,6 +40,7 @@ const initial = (): State => ({
   signup: emptySignup,
   role: 'tutor',
   signedIn: false,
+  user: null,
   accessToken: null,
   refreshToken: null,
   verification: { tutor: 'not_started', student: 'not_started', parent: 'not_started', coaching: 'not_started', admin: 'verified' },
@@ -106,6 +109,7 @@ type Store = State & {
   patchSignup: (p: Partial<Signup>) => void
   signIn: (r?: Role) => void
   setSession: (accessToken: string, refreshToken: string) => void
+  setAuthenticatedUser: (user: ApiUser) => void
   signOut: () => void
   setVerification: (r: Role, v: VerifyState) => void
   advanceVerification: () => void
@@ -128,6 +132,8 @@ type Store = State & {
   reset: () => void
   demoDate: Date
   isVerified: boolean
+  /** True while a stored session is being checked against the backend on page load. */
+  restoring: boolean
 }
 
 const g = globalThis as unknown as { __tuitionhubCtx?: React.Context<Store | null> }
@@ -138,9 +144,24 @@ let tid = 1
 export const VERIFY_FLOW: VerifyState[] = ['not_started', 'draft', 'pending', 'under_review', 'verified']
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [raw, setRaw] = useState<State>(initial)
+  const [raw, setRaw] = useState<State>(() => {
+    const state = initial()
+    const tokens = getStoredTokens()
+    return tokens ? { ...state, signedIn: true, accessToken: tokens.access_token, refreshToken: tokens.refresh_token } : state
+  })
+  const [restoring, setRestoring] = useState(() => !!getStoredTokens())
   const s = useMemo(() => (raw.version === STATE_VERSION ? raw : hydrate(raw)), [raw])
   const setS = useCallback((fn: (p: State) => State) => setRaw((p) => hydrate(fn(hydrate(p)))), [])
+
+  useEffect(() => {
+    if (!restoring) return
+    getCurrentUser()
+      .then(({ user }) => setS((p) => ({ ...p, user, role: user.role, signedIn: true })))
+      // An expired or revoked session is already cleared by the API client's
+      // refresh step; a network failure keeps the tokens for the next load.
+      .catch(() => setS((p) => ({ ...p, user: null, signedIn: false })))
+      .finally(() => setRestoring(false))
+  }, [restoring, setS])
 
   const toast = useCallback((text: string, tone: Toast['tone'] = 'info') => {
     const id = tid++
@@ -154,11 +175,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ...s,
       demoDate,
       isVerified: s.verification[s.role] === 'verified',
+      restoring,
       setRole: (role) => setS((p) => ({ ...p, role })),
       patchSignup: (patch) => setS((p) => ({ ...p, signup: { ...p.signup, ...patch } })),
       signIn: (role) => setS((p) => ({ ...p, signedIn: true, role: role ?? p.role })),
-      setSession: (accessToken, refreshToken) => setS((p) => ({ ...p, signedIn: true, accessToken, refreshToken })),
-      signOut: () => setS((p) => ({ ...p, signedIn: false, accessToken: null, refreshToken: null })),
+      setSession: (accessToken, refreshToken) => {
+        saveTokens({ access_token: accessToken, refresh_token: refreshToken, token_type: 'Bearer', expires_in: 0 })
+        setS((p) => ({ ...p, signedIn: true, accessToken, refreshToken }))
+      },
+      setAuthenticatedUser: (user) => setS((p) => ({ ...p, user, role: user.role, signedIn: true })),
+      signOut: () => {
+        clearTokens()
+        setS((p) => ({ ...p, user: null, signedIn: false, accessToken: null, refreshToken: null }))
+      },
       setVerification: (r, v) => setS((p) => ({ ...p, verification: { ...p.verification, [r]: v } })),
       advanceVerification: () =>
         setS((p) => {
@@ -192,7 +221,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       parentConfirms: () => setS((p) => ({ ...p, journey: { ...p.journey, agree: { ...p.journey.agree, parent: true }, tuition: 'active', ...activeSeed() } })),
       reset: () => { setCreatedAccount(null); setRaw(initial()) },
     }
-  }, [s, toast])
+  }, [s, toast, restoring])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

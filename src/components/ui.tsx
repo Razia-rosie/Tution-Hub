@@ -154,9 +154,18 @@ const VMAP: Record<VerifyState, { label: string; tone: keyof typeof chipTone; ic
   verified: { label: 'Verified', tone: 'green', icon: <CheckCircle2 size={12} aria-hidden /> },
   rejected: { label: 'Rejected', tone: 'red', icon: <XCircle size={12} aria-hidden /> },
   action_required: { label: 'Action required', tone: 'orange', icon: <AlertTriangle size={12} aria-hidden /> },
+  resubmission_required: { label: 'Corrections needed', tone: 'orange', icon: <AlertTriangle size={12} aria-hidden /> },
+  interview_pending: { label: 'Interview pending', tone: 'amber', icon: <Clock size={12} aria-hidden /> },
+  interview_scheduled: { label: 'Interview scheduled', tone: 'blue', icon: <Clock size={12} aria-hidden /> },
+  interview_completed: { label: 'Interview completed', tone: 'blue', icon: <Eye size={12} aria-hidden /> },
+  approved: { label: 'Approved', tone: 'green', icon: <CheckCircle2 size={12} aria-hidden /> },
+  profile_incomplete: { label: 'Profile incomplete', tone: 'amber', icon: <AlertTriangle size={12} aria-hidden /> },
+  active: { label: 'Active', tone: 'green', icon: <CheckCircle2 size={12} aria-hidden /> },
+  suspended: { label: 'Suspended', tone: 'red', icon: <XCircle size={12} aria-hidden /> },
 }
-export function StatusChip({ state }: { state: VerifyState }) {
-  const v = VMAP[state]
+// Accepts raw server strings too: an unknown status renders a neutral chip instead of crashing.
+export function StatusChip({ state }: { state: VerifyState | (string & {}) }) {
+  const v = VMAP[state as VerifyState] ?? { label: state.replaceAll('_', ' '), tone: 'gray' as const, icon: <Circle size={12} aria-hidden /> }
   return <Chip tone={v.tone} icon={v.icon}>{v.label}</Chip>
 }
 const BADGES = {

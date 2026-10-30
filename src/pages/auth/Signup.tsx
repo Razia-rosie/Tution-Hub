@@ -8,7 +8,7 @@ import { setCreatedAccount, createdAccount } from '../../lib/account'
 import { useStore } from '../../lib/store'
 import { ROLES, type Role } from '../../lib/nav'
 import { maskEmail, strength, validEmail } from '../../lib/validate'
-import { registerAccount } from '../../lib/api'
+import { registerAccount, requestEmailVerification, verifyEmail } from '../../lib/api'
 
 const PUBLIC_ROLES: Role[] = ['tutor', 'student', 'parent', 'coaching']
 const ROLE_ICON = { tutor: GraduationCap, student: HeartHandshake, parent: Users, coaching: Building2 } as Record<string, typeof Users>
@@ -33,7 +33,7 @@ export function StrengthMeter({ pw }: { pw: string }) {
 
 export function SignUp() {
   const { role: preset } = useParams()
-  const { signup, patchSignup, setSession, signIn } = useStore()
+  const { signup, patchSignup, setSession, setAuthenticatedUser, signIn } = useStore()
   const nav = useNavigate()
   const validPreset = PUBLIC_ROLES.includes(preset as Role) ? (preset as Role) : null
   useEffect(() => { if (validPreset) patchSignup({ role: validPreset }) }, [validPreset]) // eslint-disable-line
@@ -64,6 +64,7 @@ export function SignUp() {
       .then(({ user, tokens }) => {
         patchSignup({ name: user.name, email: user.email, role: user.role, emailVerified: !!user.email_verified_at })
         setSession(tokens.access_token, tokens.refresh_token)
+        setAuthenticatedUser(user)
         signIn(user.role)
         nav('/auth/gate')
       })
@@ -92,7 +93,7 @@ export function SignUp() {
 }
 
 export function RoleSelect() {
-  const { signup, patchSignup, setSession, signIn } = useStore()
+  const { signup, patchSignup, setSession, setAuthenticatedUser, signIn } = useStore()
   const nav = useNavigate()
   const [pick, setPick] = useState<Role | null>(signup.role)
   const [err, setErr] = useState(false)
@@ -120,6 +121,7 @@ export function RoleSelect() {
           .then(({ user, tokens }) => {
             patchSignup({ name: user.name, email: user.email, role: user.role })
             setSession(tokens.access_token, tokens.refresh_token)
+            setAuthenticatedUser(user)
             signIn(user.role)
             nav('/auth/gate')
           })

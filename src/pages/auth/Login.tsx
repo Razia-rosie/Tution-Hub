@@ -20,7 +20,7 @@ export function PasswordInput({ id, value, onChange, invalid, auto = 'current-pa
 }
 
 export default function Login() {
-  const { signIn, setSession, toast, patchSignup } = useStore()
+  const { signIn, setSession, setAuthenticatedUser, toast, patchSignup } = useStore()
   const nav = useNavigate()
   const { state } = useLocation() as { state?: { from?: string } }
   const [email, setEmail] = useState(''); const [pw, setPw] = useState('')
@@ -38,7 +38,7 @@ export default function Login() {
     try {
       const { user, tokens } = await loginAccount(email.trim(), pw)
       patchSignup({ role: user.role, name: user.name, email: user.email })
-      setSession(tokens.access_token, tokens.refresh_token); signIn(user.role); toast('Signed in successfully', 'success')
+      setSession(tokens.access_token, tokens.refresh_token); setAuthenticatedUser(user); signIn(user.role); toast('Signed in successfully', 'success')
       nav('/auth/gate', { state })
     } catch (error) {
       setFail(error instanceof Error && error.message.includes('invalid') ? 'wrong' : 'unknown')

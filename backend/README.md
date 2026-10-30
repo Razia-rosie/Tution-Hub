@@ -59,3 +59,88 @@ All endpoints are under `/api/v1/auth`:
 Passwords are never stored in plaintext. Refresh and reset tokens are stored
 as SHA-256 hashes, and the migration is automatically applied by MySQL's
 container initialization.
+
+## Workflow API
+
+The additive workflow schema is in `migrations/002_workflows.sql`. Existing
+records are preserved. It can be applied to an existing database with:
+
+```sh
+docker compose exec -T mysql mysql -uroot -p tuitionhub < migrations/002_workflows.sql
+```
+
+Authenticated workflow endpoints are under `/api/v1/workflow`:
+
+- `GET /dashboard`
+- `PUT /profile`
+- `POST /verification/submit`
+- `POST /verification/documents` (JPEG, PNG, or WebP only; max 10 MB)
+- `GET /notifications`
+- `GET` and `POST /relationships`
+- `GET /tuition`
+
+Administrator verification review and interview endpoints are under
+`/api/v1/workflow/admin`:
+
+- `GET /verifications?status=&role=` - list persisted applications with
+  applicant/profile/interview details
+- `GET /verifications/:id/documents` - list private document metadata
+- `POST /verifications/:id/decision` - approve, reject, or request
+  resubmission; rejection and resubmission require a reason of at least ten
+  characters
+- `POST /verifications/:id/interviews` - schedule an online or in-person
+  interview
+- `POST /verifications/:id/interviews/:interviewID/outcome` - record a
+  completed or cancelled scheduled interview
+
+These endpoints require an authenticated user whose role is `admin`.
+Application transitions, ownership, and document access are checked by the
+backend. Identity documents are written outside the public web root with
+restrictive filesystem permissions.
+The storage directory is `DOCUMENT_DIR` (default `private_documents`, relative
+to the API's working directory) and is git-ignored. Documents can only be
+uploaded or replaced while the application is `pending` or
+`resubmission_required`.
+
+## Initial administrator bootstrap
+
+Public registration cannot create administrator accounts. To create the first
+administrator, run the deployment-only CLI from the backend directory with a
+password supplied through the environment. The command is authorized by local
+OS access and the configured database credentials; it has no HTTP endpoint or
+separate bootstrap secret:
+
+```sh
+read -r -s ADMIN_BOOTSTRAP_PASSWORD
+export ADMIN_BOOTSTRAP_PASSWORD
+go run ./cmd/bootstrap-admin \
+  -name "Your Name" \
+  -email "your-admin-email@example.com"
+unset ADMIN_BOOTSTRAP_PASSWORD
+```
+
+The command uses the existing `DATABASE_URL` and requires the same
+`JWT_SECRET` configuration as the API. It acquires a MySQL advisory lock,
+checks that no administrator exists, hashes the password with bcrypt, and
+inserts one `admin` user. It refuses to run when any administrator already
+exists and never changes an existing password. The password is not logged,
+stored in configuration, or sent to the frontend.
+
+For the Docker/MySQL setup, start the database first and run the command on
+the host from `backend/`:
+
+```sh
+make db-up
+export DATABASE_URL='tuitionhub:tuitionhub@tcp(127.0.0.1:3306)/tuitionhub?parseTime=true&charset=utf8mb4&loc=UTC'
+export JWT_SECRET='use-the-same-local-development-secret-as-the-api'
+read -r -s ADMIN_BOOTSTRAP_PASSWORD
+export ADMIN_BOOTSTRAP_PASSWORD
+go run ./cmd/bootstrap-admin -name "Your Name" -email "your-admin-email@example.com"
+unset ADMIN_BOOTSTRAP_PASSWORD
+```
+
+If the command reports that an administrator already exists, stop; it will
+not reset or modify that account. After it succeeds, sign in through the
+existing frontend login and open `/app/admin/verification`. A successful
+database insert alone is not an end-to-end verification of the admin
+workflow.

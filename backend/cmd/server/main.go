@@ -17,6 +17,7 @@ import (
 	"github.com/tuitionhub/backend/internal/auth"
 	"github.com/tuitionhub/backend/internal/config"
 	"github.com/tuitionhub/backend/internal/database"
+	"github.com/tuitionhub/backend/internal/workflow"
 )
 
 func main() {
@@ -38,7 +39,9 @@ func main() {
 	}
 
 	authService := auth.NewService(db, cfg)
+	workflowService := workflow.NewService(db, cfg.DocumentDir)
 	router := newRouter(authService, cfg)
+	workflow.RegisterRoutes(router.Group("/api/v1"), authService, workflowService)
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: router, ReadHeaderTimeout: 10 * time.Second}
 
 	go func() {

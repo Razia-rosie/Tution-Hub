@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -21,6 +22,8 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrInvalidToken       = errors.New("invalid token")
 	ErrConflict           = errors.New("account already exists")
+	ErrAdminExists        = errors.New("an administrator already exists")
+	ErrInvalidInput       = errors.New("invalid administrator bootstrap input")
 )
 
 type User struct {
@@ -47,6 +50,75 @@ type Tokens struct {
 }
 
 func NewService(db *sqlx.DB, cfg config.Config) *Service { return &Service{db: db, cfg: cfg} }
+
+// BootstrapAdmin creates the initial administrator while holding a MySQL
+// advisory lock. It never updates an existing account.
+func (s *Service) BootstrapAdmin(ctx context.Context, name, email, password string) (User, error) {
+	name = strings.TrimSpace(name)
+	email = strings.ToLower(strings.TrimSpace(email))
+	parsedEmail, err := mail.ParseAddress(email)
+	if len(name) < 2 || len(name) > 120 || len(email) == 0 || err != nil || parsedEmail.Address != email || len(password) < 8 || len(password) > 72 {
+		return User{}, ErrInvalidInput
+	}
+
+	lockCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	conn, err := s.db.Connx(lockCtx)
+	if err != nil {
+		return User{}, err
+	}
+	defer conn.Close()
+	var lockAcquired int
+	if err := conn.GetContext(lockCtx, &lockAcquired, `SELECT GET_LOCK('tuitionhub_initial_admin_bootstrap', 10)`); err != nil {
+		return User{}, err
+	}
+	if lockAcquired != 1 {
+		return User{}, ErrConflict
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.Background(), `SELECT RELEASE_LOCK('tuitionhub_initial_admin_bootstrap')`)
+	}()
+
+	tx, err := conn.BeginTxx(lockCtx, nil)
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback()
+	var adminCount int
+	if err := tx.GetContext(lockCtx, &adminCount, `SELECT COUNT(*) FROM users WHERE role = 'admin'`); err != nil {
+		return User{}, err
+	}
+	if adminCount > 0 {
+		return User{}, ErrAdminExists
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return User{}, err
+	}
+	user := User{
+		ID:           uuid.NewString(),
+		Name:         name,
+		Email:        email,
+		PasswordHash: string(hash),
+		Role:         "admin",
+		CreatedAt:    time.Now().UTC(),
+		EmailVerifiedAt: func() *time.Time {
+			now := time.Now().UTC()
+			return &now
+		}(),
+	}
+	if _, err := tx.ExecContext(lockCtx, `INSERT INTO users (id, name, email, password_hash, role, account_status, email_verified_at) VALUES (?, ?, ?, ?, 'admin', 'active', UTC_TIMESTAMP(6))`, user.ID, user.Name, user.Email, user.PasswordHash); err != nil {
+		if strings.Contains(err.Error(), "Duplicate entry") {
+			return User{}, ErrConflict
+		}
+		return User{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return User{}, err
+	}
+	return user, nil
+}
 
 func (s *Service) Register(ctx context.Context, name, email, password, role string, phone *string) (User, Tokens, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
