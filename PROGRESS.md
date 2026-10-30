@@ -1,7 +1,7 @@
 # TuitionHub — progress
 
-Status as of **2026-10-31**. Detailed technical documentation:
-`PROJECT_HANDOFF.md`. API/config/test commands: `backend/README.md`.
+Status as of **2026-10-31**. Documentation index: [`docs/README.md`](docs/README.md);
+condensed handoff: `PROJECT_HANDOFF.md`.
 
 ## Overview
 
@@ -10,7 +10,7 @@ five roles (tutor, coaching centre, parent, student, admin). React 19 + Vite +
 Tailwind v4 frontend (`src/`), Go 1.25 + Gin + sqlx backend (`backend/`),
 MySQL 8 in Docker. Tutors and coaching centres are verified **manually** by an
 admin from uploaded photos. Branch: `feature/verification-workflow`
-(**never pushed**; `origin/main` is at `02714ca`).
+(published to `main` on GitHub with a backup of the earlier remote state; see CHANGELOG.md).
 
 ## Where development stopped
 
@@ -59,24 +59,21 @@ layer (sample data, demo drawer, per-role demo pages) was removed in cc2eb04.
 
 ## Remaining tasks (priority order)
 
-1. Add the newer variables (`LOGIN_LIMIT_PER_ACCOUNT`, `LOGIN_LIMIT_PER_IP`,
-   `SIGNUP_LIMIT_PER_IP`, `TRUSTED_PROXIES`, `REFRESH_REUSE_GRACE`) to
-   `backend/.env.example`.
-2. **Email provider** for verification and password-reset emails (currently
+1. **Email provider** for verification and password-reset emails (currently
    only a development fallback that shows the link; production cannot reset
    passwords without it). Needs SMTP/API credentials from the owner.
-3. **Production deployment setup**: build/serve the frontend, reverse proxy
+2. **Production deployment setup**: build/serve the frontend, reverse proxy
    with HTTPS (`COOKIE_SECURE=true`, `TRUSTED_PROXIES`), process manager,
    `APP_ENV=production`, backups of MySQL and `DOCUMENT_DIR`.
-4. **Pagination** for conversations, chat requests, classroom sessions,
+3. **Pagination** for conversations, chat requests, classroom sessions,
    messages, results; and a foreign key for `tuition_listings.student_id`.
-5. **Real-time push** (WebSocket or SSE) for messages and notifications
+4. **Real-time push** (WebSocket or SSE) for messages and notifications
    (currently polling).
-6. **Coaching teacher logins** (teachers are records today).
-7. **Student "post a tuition" screen** (API exists; UI only for parents).
-8. **SMS/OTP** (needs a Bangladesh SMS gateway) and **online payments**
+5. **Coaching teacher logins** (teachers are records today).
+6. **Student "post a tuition" screen** (API exists; UI only for parents).
+7. **SMS/OTP** (needs a Bangladesh SMS gateway) and **online payments**
    (needs a gateway merchant account; fees are tracking-only now).
-9. Admin review moderation (hide/delete), shared rate-limit store for
+8. Admin review moderation (hide/delete), shared rate-limit store for
    multi-instance deployments.
 
 ## Important file locations

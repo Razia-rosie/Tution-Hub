@@ -1,8 +1,8 @@
 # TuitionHub — technical handoff
 
 Written 2026-10-31 from the code, database and Git state at that time (not
-from conversation memory). Read with `PROGRESS.md` (status and priorities) and
-`backend/README.md` (API, security configuration, test commands).
+from conversation memory). Read with `PROGRESS.md` (status and priorities); full
+documentation is in `docs/` (index: `docs/README.md`).
 
 ## 1. What TuitionHub is
 
@@ -143,9 +143,8 @@ older endpoints superseded by `/links` and `/tuition-posts` (still covered by te
 
 ## 7. Configuration
 
-`backend/.env.example` lists the basics. Additional variables (documented in `backend/README.md` but **not yet in
-`.env.example`**): `LOGIN_LIMIT_PER_ACCOUNT`, `LOGIN_LIMIT_PER_IP`, `SIGNUP_LIMIT_PER_IP`, `TRUSTED_PROXIES`,
-`REFRESH_REUSE_GRACE`. Vite: `API_PROXY_TARGET` (default `http://localhost:8080`), `PORT`.
+`backend/.env.example` lists every backend variable (see `docs/setup.md`). Vite: `API_PROXY_TARGET`
+(default `http://localhost:8080`), `PORT`.
 
 ## 8. Known issues, debt and risks (verified against code)
 
@@ -158,7 +157,6 @@ older endpoints superseded by `/links` and `/tuition-posts` (still covered by te
 - `RequireAuth` does a DB lookup per request (acceptable now; consider caching at scale).
 - No pagination on several lists: conversations (uncapped), chat requests (200), classroom sessions (200), messages (500 per fetch), results (200), diary (100).
 - Coaching teachers are records, not user accounts; students cannot post tuition from the UI; admin cannot delete reviews.
-- `backend/.env.example` is missing the newer variables above.
 - The dev frontend runs on Vite's dev server; no production deployment configuration (reverse proxy, HTTPS, process manager) exists yet.
 
 ## 9. Testing
