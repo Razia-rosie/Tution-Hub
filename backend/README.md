@@ -144,6 +144,17 @@ DATABASE_URL='...' go run ./cmd/migrate
 | `SIGNUP_LIMIT_PER_IP` | 20 | register / reset / verify-email calls per IP per hour |
 | `TRUSTED_PROXIES` | empty | comma-separated proxies allowed to set `X-Forwarded-For` |
 | `DOCUMENT_DIR` | `private_documents` | picture storage, outside the web root |
+| `COOKIE_SECURE` | `false` | set `true` behind HTTPS so the session cookie is Secure |
+| `REFRESH_REUSE_GRACE` | `20s` | how long a just-rotated refresh token may be presented again (navigation / multi-tab races) before reuse is treated as theft |
+
+**Sessions.** The web app sends `X-Session-Mode: cookie` on sign-in: the
+refresh token is then set as an `HttpOnly; SameSite=Strict` cookie scoped to
+`/api/v1/auth` and is never visible to page scripts, and the short-lived access
+token is kept only in memory (a reload refreshes silently). Refresh and logout
+from the cookie require that same header, which a cross-site page cannot send,
+so they are not exposed to CSRF. Other clients may keep using the refresh token
+in the JSON body. Refresh tokens rotate on every use; presenting a rotated
+token after the grace period revokes every session of the account.
 
 Rate limits are in memory (per API process). Suspension, reuse of a rotated
 refresh token (which revokes all of that user's sessions) and deleted accounts

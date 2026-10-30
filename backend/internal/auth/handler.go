@@ -26,9 +26,6 @@ type loginRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required"`
 }
-type refreshRequest struct {
-	RefreshToken string `json:"refresh_token" validate:"required"`
-}
 type resetRequest struct {
 	Token       string `json:"token" validate:"required"`
 	NewPassword string `json:"new_password" validate:"required,min=8,max=72"`
@@ -76,6 +73,50 @@ func limitByIP(l *ratelimit.Limiter) gin.HandlerFunc {
 	}
 }
 
+// Browser sessions keep the refresh token in an httpOnly cookie so scripts can
+// never read it. A client opts in with the X-Session-Mode: cookie header; other
+// clients (API tools, tests) keep receiving the token in the JSON body.
+const (
+	refreshCookie     = "th_refresh"
+	sessionModeHeader = "X-Session-Mode"
+)
+
+func cookieMode(c *gin.Context) bool { return c.GetHeader(sessionModeHeader) == "cookie" }
+
+// issue writes the token response, moving the refresh token into the cookie in cookie mode.
+func issue(c *gin.Context, s *Service, status int, user User, tokens Tokens) {
+	if cookieMode(c) {
+		c.SetSameSite(http.SameSiteStrictMode)
+		c.SetCookie(refreshCookie, tokens.RefreshToken, int(s.cfg.RefreshTokenTTL.Seconds()), "/api/v1/auth", "", s.cfg.SecureCookie, true)
+		tokens.RefreshToken = ""
+	}
+	c.JSON(status, gin.H{"user": publicUser(user), "tokens": tokens})
+}
+
+func clearRefreshCookie(c *gin.Context, s *Service) {
+	c.SetSameSite(http.SameSiteStrictMode)
+	c.SetCookie(refreshCookie, "", -1, "/api/v1/auth", "", s.cfg.SecureCookie, true)
+}
+
+// refreshToken reads the token from the body, or from the cookie in cookie mode.
+// The custom header requirement doubles as CSRF protection: a cross-site page
+// cannot send it without a CORS preflight, which this API never approves.
+func refreshToken(c *gin.Context) (string, bool) {
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	if req.RefreshToken != "" {
+		return req.RefreshToken, true
+	}
+	if cookieMode(c) {
+		if v, err := c.Cookie(refreshCookie); err == nil && v != "" {
+			return v, true
+		}
+	}
+	return "", false
+}
+
 func register(s *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req registerRequest
@@ -98,7 +139,7 @@ func register(s *Service) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create account"})
 			return
 		}
-		c.JSON(http.StatusCreated, gin.H{"user": publicUser(user), "tokens": tokens})
+		issue(c, s, http.StatusCreated, user, tokens)
 	}
 }
 
@@ -138,22 +179,26 @@ func login(s *Service, l limiters) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not sign in"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"user": publicUser(user), "tokens": tokens})
+		issue(c, s, http.StatusOK, user, tokens)
 	}
 }
 
 func refresh(s *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req refreshRequest
-		if !bind(c, &req) {
+		token, ok := refreshToken(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
 			return
 		}
-		user, tokens, err := s.Refresh(c.Request.Context(), req.RefreshToken)
+		user, tokens, err := s.Refresh(c.Request.Context(), token)
 		if errors.Is(err, ErrSuspended) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "this account is suspended; contact support"})
 			return
 		}
 		if errors.Is(err, ErrInvalidToken) {
+			if cookieMode(c) {
+				clearRefreshCookie(c, s)
+			}
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired refresh token"})
 			return
 		}
@@ -161,17 +206,21 @@ func refresh(s *Service) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not refresh session"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"user": publicUser(user), "tokens": tokens})
+		issue(c, s, http.StatusOK, user, tokens)
 	}
 }
 
 func logout(s *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req refreshRequest
-		if !bind(c, &req) {
+		token, ok := refreshToken(c)
+		if cookieMode(c) {
+			clearRefreshCookie(c, s)
+		}
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 			return
 		}
-		if err := s.RevokeRefresh(c.Request.Context(), req.RefreshToken); err != nil {
+		if err := s.RevokeRefresh(c.Request.Context(), token); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not end session"})
 			return
 		}

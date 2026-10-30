@@ -10,7 +10,9 @@
 // The admin account must already exist (create it with cmd/bootstrap-admin).
 // The API under test should run with SIGNUP_LIMIT_PER_IP raised (e.g. 1000) so
 // repeated runs from one machine are not throttled; the login limit is tested
-// at its production default of 5 failures per account.
+// at its production default of 5 failures per account. Run the API with
+// REFRESH_REUSE_GRACE=2s: replay checks wait past that window, after which a
+// rotated refresh token is treated as stolen.
 
 import { readFileSync } from 'node:fs'
 
@@ -44,6 +46,7 @@ async function call(method, path, { token, body, form } = {}) {
 
 const run = Math.random().toString(36).slice(2, 8)
 const password = `E2e-${Math.random().toString(36).slice(2)}-pw`
+const pastGrace = () => new Promise((r) => setTimeout(r, 2500))
 const email = (label) => `e2e-${label}-${run}@tuitionhub.test`
 
 async function register(label, role) {
@@ -86,6 +89,22 @@ async function main() {
   check('auth: refresh rotates tokens', refreshed.status === 200 && refreshed.data?.tokens?.refresh_token !== tutor.refresh)
   tutor.token = refreshed.data.tokens.access_token
   tutor.refresh = refreshed.data.tokens.refresh_token
+
+  // Browser cookie mode: the refresh token never appears in the body, only in an httpOnly cookie.
+  // A dedicated account, because replaying a revoked token below (correctly) ends all of its sessions.
+  await register('cookie', 'parent')
+  const cookieLogin = await fetch(API + '/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Session-Mode': 'cookie' }, body: JSON.stringify({ email: email('cookie'), password }) })
+  const setCookie = cookieLogin.headers.get('set-cookie') ?? ''
+  const cookieBody = await cookieLogin.json()
+  check('cookie mode: refresh token not in the JSON body', cookieLogin.status === 200 && cookieBody.tokens.refresh_token === '' && cookieBody.tokens.access_token)
+  check('cookie mode: cookie is HttpOnly, SameSite=Strict, scoped to auth', /th_refresh=[0-9a-f]{64}/.test(setCookie) && /HttpOnly/i.test(setCookie) && /SameSite=Strict/i.test(setCookie) && /Path=\/api\/v1\/auth/.test(setCookie), setCookie)
+  const cookie = setCookie.split(';')[0]
+  const viaCookie = await fetch(API + '/api/v1/auth/refresh', { method: 'POST', headers: { Cookie: cookie, 'X-Session-Mode': 'cookie' } })
+  const rotated = (viaCookie.headers.get('set-cookie') ?? '').split(';')[0]
+  check('cookie mode: refresh from cookie rotates it', viaCookie.status === 200 && rotated.startsWith('th_refresh=') && rotated !== cookie)
+  check('cookie mode: cookie without the header is refused (CSRF guard)', (await fetch(API + '/api/v1/auth/refresh', { method: 'POST', headers: { Cookie: rotated } })).status === 401)
+  check('cookie mode: logout clears the cookie', /th_refresh=;|Max-Age=0/i.test((await fetch(API + '/api/v1/auth/logout', { method: 'POST', headers: { Cookie: rotated, 'X-Session-Mode': 'cookie' } })).headers.get('set-cookie') ?? ''))
+  check('cookie mode: revoked cookie cannot refresh', (await fetch(API + '/api/v1/auth/refresh', { method: 'POST', headers: { Cookie: rotated, 'X-Session-Mode': 'cookie' } })).status === 401)
 
   const victim = await register('ratelimit', 'student')
   const codes = []
@@ -286,6 +305,8 @@ async function main() {
   check('auth: logout', (await call('POST', '/api/v1/auth/logout', { body: { refresh_token: out.data.tokens.refresh_token } })).status < 300)
   check('auth: refresh after logout is 401', (await call('POST', '/api/v1/auth/refresh', { body: { refresh_token: out.data.tokens.refresh_token } })).status === 401)
   const r1 = await call('POST', '/api/v1/auth/refresh', { body: { refresh_token: tutor.refresh } })
+  check('auth: replay within the grace window gets a fresh session (navigation race)', (await call('POST', '/api/v1/auth/refresh', { body: { refresh_token: tutor.refresh } })).status === 200)
+  await pastGrace()
   await call('POST', '/api/v1/auth/refresh', { body: { refresh_token: tutor.refresh } })
   check('auth: replaying a rotated refresh token revokes the newer one too', (await call('POST', '/api/v1/auth/refresh', { body: { refresh_token: r1.data.tokens.refresh_token } })).status === 401)
 

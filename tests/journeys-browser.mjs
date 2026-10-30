@@ -49,7 +49,7 @@ async function login(browser, u, role) {
   await fill(p, 'Email', u.email)
   await fill(p, 'Password', password)
   await p.evaluate(() => document.querySelector('form button[type=submit]').click())
-  await p.waitForFunction(() => localStorage.getItem('tuitionhub.access_token'), { timeout: 10000 })
+  await p.waitForFunction(() => localStorage.getItem('tuitionhub.session'), { timeout: 10000 })
   await p.goto(`${WEB}/app/${role}`, { waitUntil: 'networkidle0' })
   return p
 }

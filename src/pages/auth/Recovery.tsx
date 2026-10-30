@@ -213,7 +213,7 @@ export function AdminLogin() {
           const { user, tokens } = await loginAccount(email.trim(), pw)
           if (user.role !== 'admin') {
             // Login already issued a session for this non-admin account; revoke it rather than leave it orphaned.
-            await revokeRefreshToken(tokens.refresh_token).catch(() => {})
+            await revokeRefreshToken().catch(() => {})
             throw new Error('This account is not authorized for administrator access.')
           }
           setSession(tokens.access_token, tokens.refresh_token); setAuthenticatedUser(user); toast('Administrator session started.', 'success'); nav('/app/admin/verification')

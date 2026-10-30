@@ -205,22 +205,25 @@ func (s *Service) Refresh(ctx context.Context, raw string) (User, Tokens, error)
 	if err != nil {
 		return User{}, Tokens{}, ErrInvalidToken
 	}
-	if session.RevokedAt != nil {
-		// A rotated token presented again means it was copied. End every session
-		// for the account so a stolen token stops working for the thief too.
-		_, _ = s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE user_id = ? AND revoked_at IS NULL`, session.ID)
-		return User{}, Tokens{}, ErrInvalidToken
-	}
 	if session.AccountStatus == "suspended" {
 		return User{}, Tokens{}, ErrSuspended
 	}
-	// Conditional update: of two concurrent refreshes with the same token, only one wins.
-	result, err := s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE id = ? AND revoked_at IS NULL`, session.TokenID)
-	if err != nil {
-		return User{}, Tokens{}, err
-	}
-	if rows, _ := result.RowsAffected(); rows != 1 {
+	if session.RevokedAt != nil {
+		// A rotated token presented again shortly after rotation is a benign
+		// race (a page navigated away before storing the new cookie, or two tabs
+		// refreshed at once), so it gets a fresh session. After the grace period
+		// it means the token was copied: end every session for the account so a
+		// stolen token stops working for the thief too. Logged-out tokens never
+		// reach here because logout also expires them.
+		if time.Since(*session.RevokedAt) <= s.cfg.RefreshReuseGrace {
+			tokens, err := s.issueTokens(ctx, session.User)
+			return session.User, tokens, err
+		}
+		_, _ = s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP(6)), expires_at = UTC_TIMESTAMP(6) WHERE user_id = ?`, session.ID)
 		return User{}, Tokens{}, ErrInvalidToken
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE id = ? AND revoked_at IS NULL`, session.TokenID); err != nil {
+		return User{}, Tokens{}, err
 	}
 	tokens, err := s.issueTokens(ctx, session.User)
 	return session.User, tokens, err
@@ -238,12 +241,13 @@ func (s *Service) AccountState(ctx context.Context, id string) (role, status str
 
 // RevokeAllSessions ends every refresh session for a user, e.g. on suspension.
 func (s *Service) RevokeAllSessions(ctx context.Context, userID string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE user_id = ? AND revoked_at IS NULL`, userID)
+	_, err := s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP(6)), expires_at = UTC_TIMESTAMP(6) WHERE user_id = ?`, userID)
 	return err
 }
 
 func (s *Service) RevokeRefresh(ctx context.Context, raw string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE token_hash = ?`, tokenHash(raw))
+	// Expiring as well as revoking keeps a logged-out token out of the rotation grace period.
+	_, err := s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP(6)), expires_at = UTC_TIMESTAMP(6) WHERE token_hash = ?`, tokenHash(raw))
 	return err
 }
 
@@ -294,7 +298,7 @@ func (s *Service) ResetPassword(ctx context.Context, rawToken, password string) 
 		_ = tx.Rollback()
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE user_id = ? AND revoked_at IS NULL`, token.UserID); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP(6)), expires_at = UTC_TIMESTAMP(6) WHERE user_id = ?`, token.UserID); err != nil {
 		_ = tx.Rollback()
 		return err
 	}

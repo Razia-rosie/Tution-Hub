@@ -17,8 +17,23 @@ export type Tokens = {
 }
 
 type AuthResponse = { user: ApiUser; tokens: Tokens }
-const ACCESS_TOKEN_KEY = 'tuitionhub.access_token'
-const REFRESH_TOKEN_KEY = 'tuitionhub.refresh_token'
+
+// Session model: the refresh token lives in an httpOnly cookie the browser
+// script cannot read; the short-lived access token is kept only in memory.
+// SESSION_FLAG merely remembers that a cookie session may exist, so a reload
+// knows to try a silent refresh. LEGACY_* keys are from the earlier
+// localStorage scheme and are migrated once, then deleted.
+const SESSION_FLAG = 'tuitionhub.session'
+const LEGACY_ACCESS = 'tuitionhub.access_token'
+const LEGACY_REFRESH = 'tuitionhub.refresh_token'
+const COOKIE_MODE = { 'X-Session-Mode': 'cookie' }
+let accessToken: string | null = null
+
+const storage = {
+  get: (k: string) => { try { return localStorage.getItem(k) } catch { return null } },
+  set: (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* private mode */ } },
+  del: (k: string) => { try { localStorage.removeItem(k) } catch { /* private mode */ } },
+}
 
 /** An API failure with the HTTP status and any extra fields the server sent (e.g. `missing`). */
 export class ApiError extends Error {
@@ -46,11 +61,11 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
 }
 
 export function registerAccount(input: { name: string; email: string; password: string; role: ApiUser['role'] }) {
-  return request<AuthResponse>('/api/v1/auth/register', { method: 'POST', body: JSON.stringify(input) })
+  return request<AuthResponse>('/api/v1/auth/register', { method: 'POST', headers: COOKIE_MODE, body: JSON.stringify(input) })
 }
 
 export function loginAccount(email: string, password: string) {
-  return request<AuthResponse>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
+  return request<AuthResponse>('/api/v1/auth/login', { method: 'POST', headers: COOKIE_MODE, body: JSON.stringify({ email, password }) })
 }
 
 export function requestEmailVerification(email: string) {
@@ -61,21 +76,24 @@ export function verifyEmail(token: string) {
   return request<{ message: string }>('/api/v1/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) })
 }
 
-export function saveTokens(tokens: Tokens) {
-  localStorage.setItem(ACCESS_TOKEN_KEY, tokens.access_token)
-  localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refresh_token)
+/** Keeps the access token in memory; the refresh token is already in the httpOnly cookie. */
+export function saveTokens(tokens: Pick<Tokens, 'access_token'>) {
+  accessToken = tokens.access_token
+  storage.set(SESSION_FLAG, '1')
+  storage.del(LEGACY_ACCESS)
+  storage.del(LEGACY_REFRESH)
 }
 
 export function clearTokens() {
-  localStorage.removeItem(ACCESS_TOKEN_KEY)
-  localStorage.removeItem(REFRESH_TOKEN_KEY)
+  accessToken = null
+  storage.del(SESSION_FLAG)
+  storage.del(LEGACY_ACCESS)
+  storage.del(LEGACY_REFRESH)
 }
 
-export function getStoredTokens(): Tokens | null {
-  const accessToken = localStorage.getItem(ACCESS_TOKEN_KEY)
-  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
-  if (!accessToken || !refreshToken) return null
-  return { access_token: accessToken, refresh_token: refreshToken, token_type: 'Bearer', expires_in: 0 }
+/** Whether a session may exist (signed in now, or a cookie session to restore). */
+export function hasSession() {
+  return !!accessToken || storage.get(SESSION_FLAG) === '1' || !!storage.get(LEGACY_REFRESH)
 }
 
 export function getCurrentUser() {
@@ -88,11 +106,12 @@ let refreshing: Promise<boolean> | null = null
 
 function refreshSession(): Promise<boolean> {
   refreshing ??= (async () => {
-    const tokens = getStoredTokens()
-    if (!tokens) return false
+    if (!hasSession()) return false
+    // A legacy token from the old scheme is sent once in the body; the response sets the cookie.
+    const legacy = storage.get(LEGACY_REFRESH)
     try {
-      const { tokens: next } = await request<AuthResponse>('/api/v1/auth/refresh', { method: 'POST', body: JSON.stringify({ refresh_token: tokens.refresh_token }) })
-      saveTokens(next)
+      const { tokens } = await request<AuthResponse>('/api/v1/auth/refresh', { method: 'POST', headers: COOKIE_MODE, body: JSON.stringify(legacy ? { refresh_token: legacy } : {}) })
+      saveTokens(tokens)
       return true
     } catch {
       clearTokens()
@@ -103,11 +122,8 @@ function refreshSession(): Promise<boolean> {
 }
 
 async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const send = () => {
-    const tokens = getStoredTokens()
-    if (!tokens) throw new Error('No active session')
-    return fetch(path, { ...init, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${tokens.access_token}` } })
-  }
+  if (!accessToken && !(await refreshSession())) throw new ApiError(401, { error: 'Please sign in again.' })
+  const send = () => fetch(path, { ...init, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${accessToken}` } })
   const response = await send()
   if (response.status === 403) {
     // A suspended account is blocked on every request; end the local session instead of showing broken screens.
@@ -122,18 +138,14 @@ async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Re
   return send()
 }
 
-export function revokeRefreshToken(refreshToken: string) {
-  return request<void>('/api/v1/auth/logout', { method: 'POST', body: JSON.stringify({ refresh_token: refreshToken }) })
+/** Ends the session that the cookie identifies (e.g. a non-admin who used the admin sign-in). */
+export function revokeRefreshToken() {
+  return request<void>('/api/v1/auth/logout', { method: 'POST', headers: COOKIE_MODE, body: '{}' })
 }
 
 export async function logoutAccount() {
-  const tokens = getStoredTokens()
-  if (!tokens) return
   try {
-    await request<void>('/api/v1/auth/logout', {
-      method: 'POST',
-      body: JSON.stringify({ refresh_token: tokens.refresh_token }),
-    })
+    await request<void>('/api/v1/auth/logout', { method: 'POST', headers: COOKIE_MODE, body: JSON.stringify(storage.get(LEGACY_REFRESH) ? { refresh_token: storage.get(LEGACY_REFRESH) } : {}) })
   } finally {
     clearTokens()
   }
@@ -290,8 +302,12 @@ export function getAuditLog(filters: { action?: string; limit?: number; offset?:
  * Public endpoints work signed out; when signed in they personalise results.
  */
 export const api = {
-  get: <T,>(path: string) => (getStoredTokens() ? authenticatedRequest<T>(path) : request<T>(path, { method: 'GET' })),
-  post: <T = void,>(path: string, body?: unknown) => authenticatedRequest<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) }),
+  get: <T,>(path: string) => (hasSession() ? authenticatedRequest<T>(path) : request<T>(path, { method: 'GET' })),
+  // Signed-out callers (forgot password, contact, recovery) post without a token.
+  post: <T = void,>(path: string, body?: unknown) => {
+    const init = { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) }
+    return hasSession() ? authenticatedRequest<T>(path, init) : request<T>(path, init)
+  },
   put: <T = void,>(path: string, body: unknown) => authenticatedRequest<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   del: <T = void,>(path: string) => authenticatedRequest<T>(path, { method: 'DELETE' }),
   /** Multipart upload (no JSON content type, so the browser sets the boundary). */

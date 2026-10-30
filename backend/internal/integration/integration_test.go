@@ -60,7 +60,7 @@ func setup(t *testing.T) *env {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	docDir := t.TempDir()
-	cfg := config.Config{JWTSecret: strings.Repeat("i", 40), AccessTokenTTL: 15 * time.Minute, RefreshTokenTTL: time.Hour, DocumentDir: docDir, LoginLimitPerAccount: 5, LoginLimitPerIP: 1000, SignupLimitPerIP: 1000}
+	cfg := config.Config{JWTSecret: strings.Repeat("i", 40), AccessTokenTTL: 15 * time.Minute, RefreshTokenTTL: time.Hour, RefreshReuseGrace: 0, DocumentDir: docDir, LoginLimitPerAccount: 5, LoginLimitPerIP: 1000, SignupLimitPerIP: 1000}
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	authService := auth.NewService(db, cfg)

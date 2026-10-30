@@ -134,6 +134,7 @@ async function main() {
     check('tutor: submitted -> Under review', await waitText(tutor, 'Under review'))
     check('tutor: fields and pictures locked', await tutor.evaluate(() => [...document.querySelectorAll('main input:not([type=file])')].every((i) => i.disabled) && !document.querySelector('main input[type=file]')))
     await tutor.reload({ waitUntil: 'networkidle0' })
+    check('session: no token is readable by page scripts', await tutor.evaluate(() => !Object.keys(localStorage).some((k) => /token/i.test(k)) && !Object.values(localStorage).some((v) => /^eyJ|^[0-9a-f]{64}$/.test(v)) && !document.cookie.includes('th_refresh')))
     check('tutor: session and status survive reload', (await path(tutor)) === '/app/tutor/verification' && await waitText(tutor, 'Under review'))
     await tutor.goto(`${WEB}/app/admin/verification`, { waitUntil: 'networkidle0' })
     check('tutor: cannot open admin pages', (await path(tutor)).startsWith('/app/tutor'))
@@ -238,7 +239,7 @@ async function main() {
     await click(coaching, 'Sign out')
     await click(coaching, 'Log out', { exact: true })
     await coaching.goto(`${WEB}/app/coaching/dashboard`, { waitUntil: 'networkidle0' })
-    check('sign-out ends the session', (await path(coaching)) === '/login' && await coaching.evaluate(() => localStorage.getItem('tuitionhub.access_token') === null))
+    check('sign-out ends the session', (await path(coaching)) === '/login' && await coaching.evaluate(() => localStorage.getItem('tuitionhub.session') === null))
 
     // ---------- Every role's screens at three widths ----------
     const sweepRoles = { tutor: [email('tutor'), password], coaching: [email('coaching'), password], admin: [ADMIN_EMAIL, ADMIN_PASSWORD] }
@@ -254,7 +255,7 @@ async function main() {
         const p = await newPage(browser, w, h)
         await signIn(p, who, pw, role === 'admin')
         // Regular sign-in lands on /auth/gate first; continue into the role area once the session exists.
-        await p.waitForFunction(() => localStorage.getItem('tuitionhub.access_token'), { timeout: 10000 })
+        await p.waitForFunction(() => localStorage.getItem('tuitionhub.session'), { timeout: 10000 })
         await p.goto(`${WEB}/app/${role}`, { waitUntil: 'networkidle0' })
         await waitPath(p, `/app/${role}/`, 10000)
         const links = await p.evaluate((r) => [...new Set([...document.querySelectorAll('a[href^="/app/"]')].map((a) => a.getAttribute('href')).filter((h) => h.startsWith(`/app/${r}/`)))], role)

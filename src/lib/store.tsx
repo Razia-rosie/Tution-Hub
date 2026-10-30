@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Role } from './nav'
-import { clearTokens, getCurrentUser, getStoredTokens, saveTokens, type ApiUser } from './api'
+import { clearTokens, getCurrentUser, hasSession, saveTokens, type ApiUser } from './api'
 
 // Client state is limited to the session, the sign-up draft, the verification
 // banner and toasts. Everything else lives in the backend and is fetched per screen.
@@ -23,7 +23,7 @@ type State = {
 const initial = (): State => ({
   signup: emptySignup,
   role: 'tutor',
-  signedIn: !!getStoredTokens(),
+  signedIn: hasSession(),
   user: null,
   verification: { tutor: 'not_started', student: 'verified', parent: 'verified', coaching: 'not_started', admin: 'verified' },
   toasts: [],
@@ -52,7 +52,7 @@ let tid = 1
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [s, setS] = useState<State>(initial)
-  const [restoring, setRestoring] = useState(() => !!getStoredTokens())
+  const [restoring, setRestoring] = useState(() => hasSession())
 
   useEffect(() => {
     if (!restoring) return
@@ -77,8 +77,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setRole: (role) => setS((p) => ({ ...p, role })),
     patchSignup: (patch) => setS((p) => ({ ...p, signup: { ...p.signup, ...patch } })),
     signIn: (role) => setS((p) => ({ ...p, signedIn: true, role: role ?? p.role })),
-    setSession: (accessToken, refreshToken) => {
-      saveTokens({ access_token: accessToken, refresh_token: refreshToken, token_type: 'Bearer', expires_in: 0 })
+    // refreshToken is empty in cookie mode; the browser holds it in an httpOnly cookie.
+    setSession: (accessToken, _refreshToken) => {
+      saveTokens({ access_token: accessToken })
       setS((p) => ({ ...p, signedIn: true }))
     },
     setAuthenticatedUser: (user) => setS((p) => ({ ...p, user, role: user.role, signedIn: true })),

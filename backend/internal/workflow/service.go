@@ -583,7 +583,8 @@ func (s *Service) ListTuition(ctx context.Context, subject, className, area stri
 	defer rows.Close()
 	var result []map[string]any
 	for rows.Next() {
-		var id, ownerID, subjectValue, classValue, areaValue, mode, requirements string
+		var id, ownerID, subjectValue, classValue, areaValue, mode string
+		var requirements *string // optional on posts
 		var schedule []byte
 		var budget *float64
 		var createdAt time.Time

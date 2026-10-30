@@ -15,8 +15,11 @@ type Config struct {
 	JWTSecret       string
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
-	SecureCookie    bool
-	DocumentDir     string
+	// RefreshReuseGrace is how long a just-rotated refresh token may be presented
+	// again without being treated as theft (covers navigation and multi-tab races).
+	RefreshReuseGrace time.Duration
+	SecureCookie      bool
+	DocumentDir       string
 	// Abuse limits: failed logins per email+IP and per IP in 15 minutes, and
 	// account-creation or token-request calls per IP per hour.
 	LoginLimitPerAccount int
@@ -35,6 +38,7 @@ func Load() (Config, error) {
 		JWTSecret:            os.Getenv("JWT_SECRET"),
 		AccessTokenTTL:       parseDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL:      parseDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour),
+		RefreshReuseGrace:    parseDuration("REFRESH_REUSE_GRACE", 20*time.Second),
 		SecureCookie:         os.Getenv("COOKIE_SECURE") == "true",
 		DocumentDir:          get("DOCUMENT_DIR", "private_documents"),
 		LoginLimitPerAccount: parseInt("LOGIN_LIMIT_PER_ACCOUNT", 5),

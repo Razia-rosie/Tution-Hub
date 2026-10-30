@@ -144,7 +144,7 @@ func (s *Service) SetSuspended(ctx context.Context, adminID, targetID string, su
 		if _, err = tx.ExecContext(ctx, `UPDATE users SET account_status = 'suspended', suspended_at = UTC_TIMESTAMP(6) WHERE id = ?`, targetID); err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE user_id = ? AND revoked_at IS NULL`, targetID); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP(6)), expires_at = UTC_TIMESTAMP(6) WHERE user_id = ?`, targetID); err != nil {
 			return err
 		}
 	} else {
