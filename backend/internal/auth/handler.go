@@ -90,6 +90,10 @@ func register(s *Service) gin.HandlerFunc {
 			c.JSON(http.StatusConflict, gin.H{"error": "an account with this email already exists"})
 			return
 		}
+		if errors.Is(err, ErrRegistrationClosed) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "new registrations are temporarily closed"})
+			return
+		}
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create account"})
 			return
@@ -121,6 +125,7 @@ func login(s *Service, l limiters) gin.HandlerFunc {
 		if errors.Is(err, ErrInvalidCredentials) {
 			l.loginAccount.Hit(accountKey)
 			l.loginIP.Hit(ip)
+			s.RecordLoginFailure(c.Request.Context(), req.Email, ip)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid email or password"})
 			return
 		}
@@ -206,6 +211,24 @@ func RequireAuth(s *Service) gin.HandlerFunc {
 }
 
 func requireAuth(s *Service) gin.HandlerFunc { return RequireAuth(s) }
+
+// OptionalAuth identifies the caller when a valid token is sent and lets the
+// request through anonymously otherwise (for public pages that personalise).
+func OptionalAuth(s *Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		header := strings.TrimSpace(c.GetHeader("Authorization"))
+		if strings.HasPrefix(header, "Bearer ") {
+			if id, err := s.ParseAccessToken(strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))); err == nil {
+				if role, status, err := s.AccountState(c.Request.Context(), id); err == nil && status != "suspended" {
+					c.Set("user_id", id)
+					c.Set("role", role)
+					c.Set("account_status", status)
+				}
+			}
+		}
+		c.Next()
+	}
+}
 
 func me(s *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {

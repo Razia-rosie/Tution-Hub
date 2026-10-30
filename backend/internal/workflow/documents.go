@@ -66,6 +66,9 @@ const (
 
 var ErrInvalidImage = errors.New("document is not a valid JPEG, PNG or WebP image")
 
+// ValidateImage is validateImage for other packages (profile photos, attachments).
+func ValidateImage(content []byte) (string, error) { return validateImage(content) }
+
 // validateImage checks the actual bytes rather than the filename or the
 // client-supplied Content-Type: the sniffed type must be an accepted image, the
 // header must parse with sane dimensions, and the whole image must decode.

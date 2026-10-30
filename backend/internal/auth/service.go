@@ -25,6 +25,7 @@ var (
 	ErrAdminExists        = errors.New("an administrator already exists")
 	ErrInvalidInput       = errors.New("invalid administrator bootstrap input")
 	ErrSuspended          = errors.New("account suspended")
+	ErrRegistrationClosed = errors.New("registrations closed")
 )
 
 // dummyHash is compared against when an email is unknown so that a login for a
@@ -138,8 +139,19 @@ func (s *Service) BootstrapAdmin(ctx context.Context, name, email, password stri
 	return user, nil
 }
 
+// RecordLoginFailure audits a failed password for an existing account so admins
+// can spot guessing. Unknown emails are not recorded (nothing to attach them to).
+func (s *Service) RecordLoginFailure(ctx context.Context, email, ip string) {
+	_, _ = s.db.ExecContext(ctx, `INSERT INTO audit_logs (id, actor_id, subject_user_id, action, metadata) SELECT ?, NULL, id, 'login_failed', JSON_OBJECT('ip', ?) FROM users WHERE email = ?`, uuid.NewString(), ip, strings.ToLower(strings.TrimSpace(email)))
+}
+
 func (s *Service) Register(ctx context.Context, name, email, password, role string, phone *string) (User, Tokens, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
+	// Administrators can pause sign-ups from platform settings; a missing table or row means open.
+	var open string
+	if err := s.db.GetContext(ctx, &open, `SELECT CAST(setting_value AS CHAR) FROM platform_settings WHERE setting_key = 'registrations_open'`); err == nil && open == "false" {
+		return User{}, Tokens{}, ErrRegistrationClosed
+	}
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return User{}, Tokens{}, err

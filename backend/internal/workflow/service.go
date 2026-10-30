@@ -137,11 +137,18 @@ func (s *Service) UpsertProfile(ctx context.Context, userID string, input map[st
 	if err := s.db.GetContext(ctx, &lock, `SELECT u.role, v.status FROM users u LEFT JOIN verification_applications v ON v.user_id = u.id WHERE u.id = ?`, userID); err != nil {
 		return err
 	}
-	// The reviewer must see exactly what was submitted, so verification profiles freeze while in review.
+	// The reviewer must see exactly what was submitted, so the fields under review
+	// freeze while an application is pending; other profile fields stay editable.
+	reviewed := map[string]bool{"display_name": true, "institution": true, "education": true, "subjects": true, "classes": true, "areas": true}
 	if verifiableRole(lock.Role) && (lock.Status.String == "pending" || lock.Status.String == "under_review") {
-		return ErrConflict
+		for key := range input {
+			if reviewed[key] {
+				return ErrConflict
+			}
+		}
 	}
-	allowed := map[string]bool{"display_name": true, "institution": true, "education": true, "subjects": true, "classes": true, "areas": true, "teaching_modes": true, "availability": true, "experience_years": true, "fee_expectation": true, "address": true, "birth_date": true, "guardian_notes": true}
+	allowed := map[string]bool{"display_name": true, "institution": true, "education": true, "subjects": true, "classes": true, "areas": true, "teaching_modes": true, "availability": true, "experience_years": true, "fee_expectation": true, "address": true, "birth_date": true, "guardian_notes": true,
+		"bio": true, "current_study": true, "results": true, "mediums": true, "gender": true, "listed": true, "class_name": true, "opening_hours": true, "established": true, "district": true}
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
@@ -153,7 +160,7 @@ func (s *Service) UpsertProfile(ctx context.Context, userID string, input map[st
 		}
 		var encoded any = value
 		switch key {
-		case "subjects", "classes", "areas", "teaching_modes", "availability":
+		case "subjects", "classes", "areas", "teaching_modes", "availability", "mediums":
 			data, marshalErr := json.Marshal(value)
 			if marshalErr != nil {
 				_ = tx.Rollback()

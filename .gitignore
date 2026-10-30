@@ -26,3 +26,6 @@ logs/
 backend/tmp/
 backend/private_documents/
 private_documents/
+
+# Local database backups contain personal data and password hashes.
+backend/backups/
