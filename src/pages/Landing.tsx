@@ -7,7 +7,6 @@ import {
 import { btnClass, cx, ProgressRing } from '../components/ui'
 
 const SW = 1.5
-const TUTOR_PHOTO = 'https://images.unsplash.com/photo-1589386417686-0d34b5903d23?w=240&h=240&fit=crop&auto=format'
 
 function Section({ id, tone = 'light', children, className }: { id?: string; tone?: 'light' | 'white'; children: React.ReactNode; className?: string }) {
   return (
@@ -29,59 +28,28 @@ const lift = 'transition duration-200 hover:-translate-y-0.5 hover:shadow-popove
 const card = 'rounded-card border border-gray-200 bg-white shadow-card'
 
 /* ---------- Hero ---------- */
-const FACTORS: [string, 'ok' | 'part'][] = [['Subject', 'ok'], ['Class', 'ok'], ['Schedule', 'ok'], ['Location', 'part'], ['Budget', 'ok'], ['Verification', 'ok']]
-
-function TutorPhoto() {
-  const [fail, setFail] = useState(false)
-  return fail ? (
-    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-100 font-heading text-lg font-bold text-navy-700" aria-hidden>TR</span>
-  ) : (
-    <img src={TUTOR_PHOTO} alt="Placeholder portrait for demo tutor Tanvir Ahmed Rahman" onError={() => setFail(true)} className="h-14 w-14 rounded-full bg-blue-100 object-cover" />
-  )
-}
+// What the platform really does, shown as a product summary rather than a sample person.
+const HERO_POINTS: [typeof ShieldCheck, string, string][] = [
+  [BadgeCheck, 'Manually verified', 'Every tutor and coaching centre is checked by our team from photos of their documents.'],
+  [MessagesSquare, 'Private until agreed', 'Chat inside TuitionHub; phone and address are shared only after both sides confirm.'],
+  [ClipboardCheck, 'Managed after hiring', 'Classroom, schedule, attendance, homework, diary and fee tracking in one place.'],
+]
 
 function HeroPreview() {
   return (
     <div className="relative mx-auto w-full max-w-[520px] pb-10 pt-4 lg:mx-0 lg:ml-auto">
       <div aria-hidden className="absolute inset-x-6 top-0 h-full rounded-modal border border-white/10 bg-white/5" />
-      <div className="relative rounded-modal bg-white p-5 shadow-modal sm:p-6">
-        <div className="flex items-start gap-4">
-          <TutorPhoto />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <p className="font-heading text-lg font-bold text-navy-900">Tanvir Ahmed Rahman</p>
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600">Demo</span>
-            </div>
-            <p className="text-sm text-gray-600">Mathematics &amp; Physics · Classes 9–12 · Uttara</p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <span className="inline-flex items-center gap-1 rounded-full bg-success-100 px-2 py-0.5 text-xs font-semibold text-teal-700"><BadgeCheck size={13} strokeWidth={SW} aria-hidden />Identity Verified</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-success-100 px-2 py-0.5 text-xs font-semibold text-teal-700"><GraduationCap size={13} strokeWidth={SW} aria-hidden />Education Verified</span>
-            </div>
-          </div>
-        </div>
-        <div className="mt-5 grid grid-cols-3 gap-3 border-y border-gray-200 py-4 text-center">
-          <div><p className="flex items-center justify-center gap-1 font-heading text-xl font-bold text-navy-900 tabular"><Star size={16} strokeWidth={SW} className="fill-warning-600 text-warning-600" aria-hidden />4.9</p><p className="text-xs text-gray-600">Rating</p></div>
-          <div><p className="font-heading text-xl font-bold text-navy-900 tabular">27</p><p className="text-xs text-gray-600">Verified tuitions</p></div>
-          <div className="flex flex-col items-center"><ProgressRing value={87} size={48} label="Trust Score" /><p className="text-xs text-gray-600">Trust Score</p></div>
-        </div>
-        <div className="mt-4">
-          <div className="flex items-center justify-between">
-            <p className="font-heading text-2xl font-bold text-navy-900 tabular">92% <span className="text-sm font-semibold text-gray-600">Match</span></p>
-            <span className="text-[11px] text-gray-600">Why this match · demo weights</span>
-          </div>
-          <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
-            {FACTORS.map(([f, st]) => (
-              <li key={f} className="flex items-center gap-1.5 text-sm text-charcoal-900">
-                {st === 'ok' ? <Check size={16} strokeWidth={2} className="text-emerald-600" aria-label="Matched" /> : <Minus size={16} strokeWidth={2} className="text-warning-600" aria-label="Partial match" />}{f}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs text-gray-600">Location: partial — about 28–35 min travel.</p>
-        </div>
-      </div>
+      <ul className="relative space-y-4 rounded-modal bg-white p-5 shadow-modal sm:p-6">
+        {HERO_POINTS.map(([I, t, d]) => (
+          <li key={t} className="flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success-100 text-teal-700"><I size={20} strokeWidth={SW} aria-hidden /></span>
+            <div><p className="font-heading font-bold text-navy-900">{t}</p><p className="text-sm text-gray-600">{d}</p></div>
+          </li>
+        ))}
+      </ul>
       <div className="absolute -bottom-0 right-2 flex max-w-[270px] items-start gap-3 rounded-card border border-gray-200 bg-white p-3 shadow-popover sm:-right-2">
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success-100 text-emerald-600"><CheckCircle2 size={18} strokeWidth={SW} aria-hidden /></span>
-        <div><p className="text-sm font-semibold text-navy-900">Class completed</p><p className="text-xs text-gray-600">Parent notified · 6:02 PM</p></div>
+        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success-100 text-emerald-600"><Bell size={18} strokeWidth={SW} aria-hidden /></span>
+        <div><p className="text-sm font-semibold text-navy-900">Guardians stay informed</p><p className="text-xs text-gray-600">Absences, homework and class changes are notified.</p></div>
       </div>
     </div>
   )
@@ -113,10 +81,10 @@ function Hero() {
 
 /* ---------- Trust strip ---------- */
 const TRUST = [
-  { icon: UserCheck, t: 'Verified tutors', d: 'Identity, education and experience checked.' },
-  { icon: Users, t: 'Verified guardians and students', d: 'Both sides of every tuition are known.' },
+  { icon: UserCheck, t: 'Verified tutors and centres', d: 'Identity documents reviewed by hand before anyone is listed.' },
+  { icon: Users, t: 'Students stay in control', d: "A guardian sees a child's classes only after the child approves the link." },
   { icon: EyeOff, t: 'Privacy-first', d: 'Exact address stays hidden until agreement.' },
-  { icon: LineChart, t: 'Transparent Trust Score', d: 'A 0–100 score with its full breakdown.' },
+  { icon: LineChart, t: 'Real reviews only', d: 'Only families with a confirmed tuition can leave a review.' },
 ]
 function TrustStrip() {
   return (
@@ -135,11 +103,11 @@ function TrustStrip() {
 
 /* ---------- How it works ---------- */
 const STEPS = [
-  { icon: ShieldCheck, t: 'Verify', d: 'Tutors, guardians and students complete verification first.' },
-  { icon: Sparkles, t: 'Match', d: 'Weighted rules rank tutors, with a visible reason for every score.' },
-  { icon: MessagesSquare, t: 'Chat and agree', d: 'Chat opens after mutual interest. Both sides confirm the agreement.' },
+  { icon: ShieldCheck, t: 'Verify', d: 'Tutors and coaching centres upload document photos; our team reviews each one by hand.' },
+  { icon: Sparkles, t: 'Find', d: 'Families search verified tutors or post a tuition; tutors apply to posts.' },
+  { icon: MessagesSquare, t: 'Chat and agree', d: 'Chat opens when a request or application is accepted. A demo class, then both sides confirm terms.' },
   { icon: ClipboardCheck, t: 'Manage', d: 'Schedule, attendance, homework and payment tracking in one place.' },
-  { icon: Trophy, t: 'Review and rank', d: 'Reviews unlock after a completed tuition and feed ranking.' },
+  { icon: Trophy, t: 'Review', d: 'Reviews unlock once a tuition is confirmed and shape each tutor\'s rating.' },
 ]
 function HowItWorks() {
   return (
@@ -164,8 +132,8 @@ function HowItWorks() {
 
 /* ---------- Roles ---------- */
 const ROLE_CARDS = [
-  { icon: GraduationCap, t: 'Join as Tutor', to: '/signup/tutor', cta: 'Register as a tutor', b: ['Get matched to verified tuition requests', 'Earn Identity, Education and Experience badges', 'Manage students, attendance and payments'] },
-  { icon: Baby, t: 'Join as Parent', to: '/signup/parent', cta: 'Register as a parent', b: ['Find tutors you can verify and compare', 'Monitor progress and attendance for each child', 'Get notified when classes start and finish'] },
+  { icon: GraduationCap, t: 'Join as Tutor', to: '/signup/tutor', cta: 'Register as a tutor', b: ['Apply to tuition posts and answer chat requests', 'Earn Identity and Education Verified badges', 'Run classrooms, attendance, homework and fee tracking'] },
+  { icon: Baby, t: 'Join as Parent', to: '/signup/parent', cta: 'Register as a parent', b: ['Search verified tutors and coaching centres', "Follow each child's attendance, homework and results", 'Get notified about absences, homework and class changes'] },
   { icon: Building2, t: 'Join as Coaching', to: '/signup/coaching', cta: 'Register your centre', b: ['Run batches, classes and exams in one place', 'Track student results and parent communication', 'Show a Verified Organization badge'] },
 ]
 function Roles() {
@@ -209,12 +177,12 @@ function ChildSwitch() {
 }
 
 const DIFFS: { icon: typeof Sparkles; t: string; d: string; snippet: React.ReactNode }[] = [
-  { icon: Sparkles, t: 'Intelligent matching', d: 'A transparent weighted-rule score, with the reason for every factor shown.', snippet: <Snippet><MiniBars rows={[['Subject', 100], ['Schedule', 90], ['Budget', 85]]} /></Snippet> },
-  { icon: ShieldCheck, t: 'Trust Score', d: 'A 0–100 score built from verification, reviews, attendance and more. Distinct from rating and rank.', snippet: <Snippet><div className="flex items-center gap-4"><ProgressRing value={87} size={64} label="Trust Score" /><div className="min-w-0 flex-1"><MiniBars rows={[['Verification', 95], ['Attendance', 92]]} /></div></div></Snippet> },
+  { icon: Sparkles, t: 'Focused search', d: 'Filter verified tutors by subject, class, area, mode and fee; filter tuition posts the same way.', snippet: <Snippet><ul className="space-y-1.5 text-sm"><li className="flex justify-between"><span className="text-gray-600">Subject</span><span className="font-semibold">Physics</span></li><li className="flex justify-between"><span className="text-gray-600">Area</span><span className="font-semibold">Uttara</span></li><li className="flex justify-between"><span className="text-gray-600">Mode</span><span className="font-semibold">Offline</span></li></ul></Snippet> },
+  { icon: ShieldCheck, t: 'Human verification', d: 'No automated checks: an administrator looks at every ID and licence photo, then approves, rejects or asks for corrections.', snippet: <Snippet><div className="flex items-center gap-3"><ProgressRing value={100} size={48} label="Reviewed" /><p className="text-sm text-navy-900">Pending → Reviewed by our team → Verified</p></div></Snippet> },
   { icon: ClipboardCheck, t: 'Complete tuition management', d: 'Schedule, attendance, homework and payment tracking after you hire.', snippet: <Snippet><ul className="space-y-2 text-sm"><li className="flex justify-between"><span className="text-gray-600">Attendance</span><span className="font-semibold tabular">92%</span></li><li className="flex justify-between"><span className="text-gray-600">Homework</span><span className="font-semibold tabular">18/20</span></li><li className="flex items-center justify-between"><span className="text-gray-600">Oct fee ৳6,000</span><span className="rounded-input bg-warning-100 px-2 py-0.5 text-xs font-semibold text-warning-600">Pending</span></li></ul></Snippet> },
-  { icon: LineChart, t: 'Progress analytics', d: 'Compare school exam marks with tuition test marks over time.', snippet: <Snippet><svg viewBox="0 0 200 64" className="h-16 w-full" role="img" aria-label="Tuition marks rising from 62 to 82, school marks rising from 60 to 70"><polyline fill="none" stroke="#9AA5B1" strokeWidth="2" strokeDasharray="4 3" points="8,44 56,42 104,38 152,35 192,30" /><polyline fill="none" stroke="#12336B" strokeWidth="2.5" strokeLinecap="round" points="8,46 56,38 104,30 152,20 192,10" /></svg><div className="mt-1 flex gap-4 text-xs text-gray-600"><span className="flex items-center gap-1"><i className="inline-block h-0.5 w-4 bg-navy-700" />Tuition tests</span><span className="flex items-center gap-1"><i className="inline-block h-0.5 w-4 bg-gray-400" />School exams</span></div></Snippet> },
-  { icon: RefreshCcw, t: 'Automatic tutor replacement', d: 'If a tutor becomes unavailable, a shortlist is built from your saved requirement.', snippet: <Snippet><p className="text-xs font-semibold text-warning-600">Tutor unavailable</p><p className="mt-1 text-sm text-navy-900">3 replacements shortlisted</p><p className="mt-1 text-xs text-gray-600">Class 10 · Physics · Mirpur · ৳5,000</p></Snippet> },
-  { icon: Users, t: 'Multi-child support', d: 'One guardian account, a child switcher, and separate schedules and reports.', snippet: <ChildSwitch /> },
+  { icon: LineChart, t: 'Progress at a glance', d: 'Attendance, graded homework and published exam results for each child.', snippet: <Snippet><svg viewBox="0 0 200 64" className="h-16 w-full" role="img" aria-label="Tuition marks rising from 62 to 82, school marks rising from 60 to 70"><polyline fill="none" stroke="#9AA5B1" strokeWidth="2" strokeDasharray="4 3" points="8,44 56,42 104,38 152,35 192,30" /><polyline fill="none" stroke="#12336B" strokeWidth="2.5" strokeLinecap="round" points="8,46 56,38 104,30 152,20 192,10" /></svg><div className="mt-1 flex gap-4 text-xs text-gray-600"><span className="flex items-center gap-1"><i className="inline-block h-0.5 w-4 bg-navy-700" />Tuition tests</span><span className="flex items-center gap-1"><i className="inline-block h-0.5 w-4 bg-gray-400" />School exams</span></div></Snippet> },
+  { icon: RefreshCcw, t: 'Messages that stay', d: 'Chat requests, conversations and history are saved, with unread counts and blocking.', snippet: <Snippet><p className="text-xs font-semibold text-blue-600">2 unread</p><p className="mt-1 text-sm text-navy-900">“Sunday at 6:30 works for us.”</p><p className="mt-1 text-xs text-gray-600">Phone shared after the tuition is confirmed</p></Snippet> },
+  { icon: Users, t: 'Multi-child support', d: "One guardian account linked to each child's student account, with separate classrooms and reports.", snippet: <ChildSwitch /> },
 ]
 function Differentiators() {
   return (
@@ -235,20 +203,17 @@ function Differentiators() {
 
 /* ---------- Safety ---------- */
 const TIMELINE = [
-  { icon: MapPin, t: 'Arrived at Tuition', d: 'Tutor checks in at the agreed place and time.', time: '5:00 PM' },
-  { icon: Bell, t: 'Parent Notification', d: 'Guardian is told the tutor has arrived.', time: '5:00 PM' },
-  { icon: CheckCircle2, t: 'Class Completed', d: 'Tutor marks the class complete and adds a short note.', time: '6:02 PM', ok: true },
-  { icon: Bell, t: 'Parent Notification', d: 'Guardian receives the completion note and attendance mark.', time: '6:02 PM' },
+  { icon: MapPin, t: 'Class scheduled', d: 'The tutor adds the class to the shared schedule; changes and cancellations are notified.', time: 'Before' },
+  { icon: CheckCircle2, t: 'Attendance marked', d: 'Present, late or absent is recorded for each student.', time: 'In class', ok: true },
+  { icon: Bell, t: 'Absence alert', d: 'If a student is marked absent, their linked guardian is notified straight away.', time: 'In class' },
+  { icon: Bell, t: 'Diary and homework', d: "The day's topics and homework are posted; graded work is visible to the student and guardian.", time: 'After' },
 ]
 function Safety() {
   return (
     <Section tone="white" id="safety">
       <div className="grid items-start gap-12 lg:grid-cols-[1fr_1.1fr]">
         <div>
-          <Heading eyebrow="Safety" title="Parents stay informed at every class" body="Check-ins and completions trigger clear notifications, so guardians are never guessing." />
-          <p className="mt-6 flex items-start gap-2 rounded-input border border-dashed border-warning-600 bg-warning-100 p-3 text-sm text-charcoal-900">
-            <FlaskConical size={16} strokeWidth={SW} className="mt-0.5 shrink-0 text-warning-600" aria-hidden />
-            <span><strong className="text-warning-600">Demo.</strong> In this prototype check-in and notifications are simulated. There is no live GPS.</span></p>
+          <Heading eyebrow="Safety" title="Parents stay informed at every class" body="Attendance, absences, class changes and homework reach linked guardians as notifications, so nobody is guessing." />
           <Link to="/safety" className={cx(btnClass('secondary'), 'mt-6')}>Read about safety <ArrowRight size={16} strokeWidth={SW} aria-hidden /></Link>
         </div>
         <ol className={cx(card, 'p-6 sm:p-8')} aria-label="Safety timeline">

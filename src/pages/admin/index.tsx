@@ -3,6 +3,7 @@ import Verification from './Verification'
 import Overview from './Overview'
 import Users from './Users'
 import Audit from './Audit'
+import { Awards, Matches, Payments, Reports, Reviews, Safety, Settings, Tickets, TuitionPosts } from './Platform'
 
 const MAP: Record<string, (sub: string) => ReactNode> = {
   overview: () => <Overview />,
@@ -12,6 +13,17 @@ const MAP: Record<string, (sub: string) => ReactNode> = {
   coaching: () => <Users role="coaching" />,
   parents: () => <Users role="parent" />,
   students: () => <Users role="student" />,
+  'tuition-posts': () => <TuitionPosts />,
+  matches: () => <Matches />,
+  reports: () => <Reports />,
+  analytics: () => <Reports title="Analytics" />,
+  complaints: () => <Tickets title="Complaints and support" sub="Complaints, payment problems and help requests from users." categories={['complaint', 'support', 'payment']} />,
+  appeals: () => <Tickets title="Appeals" sub="Users appealing a verification decision or suspension." categories={['appeal']} />,
+  safety: () => <Safety />,
+  reviews: () => <Reviews />,
+  awards: () => <Awards />,
+  payments: () => <Payments />,
+  settings: () => <Settings />,
   'audit-log': () => <Audit />,
 }
 

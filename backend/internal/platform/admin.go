@@ -42,7 +42,7 @@ type ticketInput struct {
 func (s *Service) CreateTicket(ctx context.Context, reporterID string, in ticketInput) (string, error) {
 	id := newID()
 	_, err := s.db.ExecContext(ctx, `INSERT INTO support_tickets (id, reporter_id, subject_user_id, listing_id, category, title, body) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		id, reporterID, nullable(in.SubjectUserID), nullable(in.ListingID), in.Category, strings.TrimSpace(in.Title), strings.TrimSpace(in.Body))
+		id, nullable(reporterID), nullable(in.SubjectUserID), nullable(in.ListingID), in.Category, strings.TrimSpace(in.Title), strings.TrimSpace(in.Body))
 	return id, err
 }
 
@@ -110,12 +110,11 @@ func (s *Service) AdminListings(ctx context.Context, status, q string, limit, of
 
 // Settings an administrator may change, with their defaults.
 var settingDefaults = map[string]any{
-	"registrations_open":        true,
-	"tutor_applications_open":   true,
-	"max_applications_per_day":  20,
-	"support_email":             "",
-	"maintenance_banner":        "",
-	"review_min_tuition_status": "active",
+	"registrations_open":       true,
+	"tutor_applications_open":  true,
+	"max_applications_per_day": 20,
+	"support_email":            "",
+	"maintenance_banner":       "",
 }
 
 func (s *Service) Settings(ctx context.Context) (map[string]any, error) {
@@ -167,6 +166,19 @@ func (s *Service) SaveSettings(ctx context.Context, adminID string, in map[strin
 	}
 	s.audit(ctx, adminID, "", "settings_updated", in)
 	return nil
+}
+
+// SettingInt reads a numeric platform setting, falling back to its default.
+func (s *Service) SettingInt(ctx context.Context, key string) int {
+	var raw json.RawMessage
+	if err := s.db.GetContext(ctx, &raw, `SELECT setting_value FROM platform_settings WHERE setting_key = ?`, key); err == nil {
+		var v float64
+		if json.Unmarshal(raw, &v) == nil {
+			return int(v)
+		}
+	}
+	n, _ := settingDefaults[key].(int)
+	return n
 }
 
 // SettingBool reads a boolean platform setting, falling back to its default.
@@ -346,4 +358,68 @@ func (s *Service) Suspicious(ctx context.Context) ([]map[string]any, error) {
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+// AdminEngagements lists tuitions (the admin "Matches" view).
+func (s *Service) AdminEngagements(ctx context.Context, status string) ([]Engagement, error) {
+	out := []Engagement{}
+	query, args := engagementSelect, []any{}
+	if status != "" {
+		query, args = query+` WHERE e.status = ?`, append(args, status)
+	}
+	err := s.db.SelectContext(ctx, &out, query+` ORDER BY e.updated_at DESC LIMIT 200`, args...)
+	return out, err
+}
+
+type AdminReview struct {
+	PublicReview
+	SubjectName string `db:"subject_name" json:"subject_name"`
+}
+
+func (s *Service) AdminReviews(ctx context.Context) ([]AdminReview, error) {
+	out := []AdminReview{}
+	err := s.db.SelectContext(ctx, &out, `SELECT r.id, r.stars, r.body, r.reply, u.name AS reviewer, u.role AS reviewer_role, CONCAT(e.subject, ', ', e.class_name) AS subject, r.created_at, r.replied_at, t.name AS subject_name
+		FROM reviews r JOIN users u ON u.id = r.reviewer_id JOIN users t ON t.id = r.subject_id JOIN engagements e ON e.id = r.engagement_id ORDER BY r.created_at DESC LIMIT 200`)
+	return out, err
+}
+
+type AdminPayment struct {
+	Payment
+	EngagementID string  `db:"engagement_id" json:"engagement_id"`
+	TutorName    string  `db:"tutor_name" json:"tutor_name"`
+	ClientName   *string `db:"client_name" json:"client_name"`
+	Subject      string  `db:"subject" json:"subject"`
+}
+
+// AdminPayments lists tracked tuition fees, e.g. disputes needing attention.
+func (s *Service) AdminPayments(ctx context.Context, status string) ([]AdminPayment, error) {
+	out := []AdminPayment{}
+	query := `SELECT p.id, p.month, p.amount, p.status, p.note, p.marked_at, p.confirmed_at, p.engagement_id, t.name AS tutor_name, COALESCE(g.name, st.name) AS client_name, e.subject
+		FROM payment_records p JOIN engagements e ON e.id = p.engagement_id JOIN users t ON t.id = e.tutor_id LEFT JOIN users g ON g.id = e.guardian_id LEFT JOIN users st ON st.id = e.student_id`
+	args := []any{}
+	if status != "" {
+		query, args = query+` WHERE p.status = ?`, append(args, status)
+	}
+	err := s.db.SelectContext(ctx, &out, query+` ORDER BY p.created_at DESC LIMIT 200`, args...)
+	return out, err
+}
+
+// PublicInfo exposes the settings that public pages show (support contact,
+// maintenance banner). Nothing else from platform_settings is public.
+func (s *Service) PublicInfo(ctx context.Context) (map[string]any, error) {
+	all, err := s.Settings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"support_email": all["support_email"], "maintenance_banner": all["maintenance_banner"], "registrations_open": all["registrations_open"]}, nil
+}
+
+// ContactRequest files a support ticket from someone who may not be signed in.
+// The reply address travels in the ticket body for staff to answer manually.
+func (s *Service) ContactRequest(ctx context.Context, userID, name, email, category, subject, body string) error {
+	if category != "support" && category != "complaint" && category != "safety" && category != "appeal" {
+		category = "support"
+	}
+	_, err := s.CreateTicket(ctx, userID, ticketInput{Category: category, Title: strings.TrimSpace(subject), Body: "From: " + strings.TrimSpace(name) + " <" + strings.TrimSpace(email) + ">\n\n" + strings.TrimSpace(body)})
+	return err
 }

@@ -659,7 +659,12 @@ type Progress struct {
 func (s *Service) StudentProgress(ctx context.Context, viewerID, viewerRole, studentID string) (Progress, error) {
 	p := Progress{StudentID: studentID}
 	if viewerID != studentID && viewerRole != "admin" && !s.guardianOf(ctx, viewerID, studentID) {
-		return p, notFound("student not found")
+		// A teacher may see progress for students in a classroom they run.
+		var teaches int
+		_ = s.db.GetContext(ctx, &teaches, `SELECT COUNT(*) FROM classroom_members m JOIN classrooms c ON c.id = m.classroom_id WHERE m.student_id = ? AND c.owner_id = ?`, studentID, viewerID)
+		if teaches == 0 {
+			return p, notFound("student not found")
+		}
 	}
 	var att struct {
 		Present int `db:"present"`

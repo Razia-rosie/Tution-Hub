@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/tuitionhub/backend/internal/auth"
+	"github.com/tuitionhub/backend/internal/ratelimit"
 )
 
 func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, s *Service) {
@@ -20,6 +21,28 @@ func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, s *Service) {
 	pub.GET("/coaching/:id", s.hCentre)
 	pub.GET("/tuition", s.hSearchListings(false))
 	pub.GET("/tuition/:id", s.hListing)
+	pub.GET("/info", func(c *gin.Context) { out, err := s.PublicInfo(c.Request.Context()); respond(c, 200, err, out) })
+	// Anonymous contact form: capped per address so it cannot be used to flood the support queue.
+	contactLimit := ratelimit.New(10, time.Hour)
+	pub.POST("/contact", func(c *gin.Context) {
+		if ok, _ := contactLimit.Allow(c.ClientIP()); !ok {
+			fail(c, apiError{http.StatusTooManyRequests, "too many messages; please try again later"})
+			return
+		}
+		contactLimit.Hit(c.ClientIP())
+		var in struct {
+			Name     string `json:"name" validate:"required,max=120"`
+			Email    string `json:"email" validate:"required,email,max=255"`
+			Category string `json:"category" validate:"max=30"`
+			Subject  string `json:"subject" validate:"required,max=200"`
+			Body     string `json:"body" validate:"required,min=10,max=5000"`
+		}
+		if err := s.bind(c, &in); err != nil {
+			fail(c, err)
+			return
+		}
+		respond(c, 201, s.ContactRequest(c.Request.Context(), uid(c), in.Name, in.Email, in.Category, in.Subject, in.Body), nil)
+	})
 	pub.GET("/users/:id/photo", func(c *gin.Context) { s.Photo(c, uid(c), role(c)) })
 
 	a := r.Group("", auth.RequireAuth(authService))
@@ -465,6 +488,18 @@ func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, s *Service) {
 		}
 		out, err := s.PlatformReport(c.Request.Context(), from, to)
 		respond(c, 200, err, out)
+	})
+	ad.GET("/engagements", func(c *gin.Context) {
+		out, err := s.AdminEngagements(c.Request.Context(), c.Query("status"))
+		respond(c, 200, err, gin.H{"engagements": out})
+	})
+	ad.GET("/reviews", func(c *gin.Context) {
+		out, err := s.AdminReviews(c.Request.Context())
+		respond(c, 200, err, gin.H{"reviews": out})
+	})
+	ad.GET("/payments", func(c *gin.Context) {
+		out, err := s.AdminPayments(c.Request.Context(), c.Query("status"))
+		respond(c, 200, err, gin.H{"payments": out})
 	})
 	ad.GET("/suspicious", func(c *gin.Context) {
 		out, err := s.Suspicious(c.Request.Context())

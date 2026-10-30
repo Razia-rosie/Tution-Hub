@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { Button, Card, Field, Input, Select, StatusChip, Textarea } from '../../components/ui'
 import { getAdminUsers, setUserSuspended, type AdminUser } from '../../lib/api'
 import { useStore } from '../../lib/store'
+import { UserDetail } from './Platform'
 
 const ROLE_TITLES: Record<string, string> = { '': 'All users', tutor: 'Private tutors', coaching: 'Coaching centres', parent: 'Parents and guardians', student: 'Students' }
 const STATUSES = ['', 'pending', 'resubmission_required', 'interview_scheduled', 'profile_incomplete', 'active', 'rejected', 'suspended']
@@ -23,6 +24,7 @@ export default function Users({ role = '' }: { role?: string }) {
   const [suspending, setSuspending] = useState<AdminUser | null>(null)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
+  const [detail, setDetail] = useState<string | null>(null)
 
   useEffect(() => { setRoleFilter(role); setOffset(0) }, [role])
   const load = () => {
@@ -64,7 +66,7 @@ export default function Users({ role = '' }: { role?: string }) {
             <tbody className="divide-y divide-gray-100">
               {users.map((u) => (
                 <tr key={u.id}>
-                  <td className="p-3"><p className="font-semibold">{u.name}</p><p className="break-all text-xs text-gray-600">{u.email}</p></td>
+                  <td className="p-3"><button className="font-semibold text-blue-600 hover:underline" onClick={() => setDetail(u.id)}>{u.name}</button><p className="break-all text-xs text-gray-600">{u.email}</p></td>
                   <td className="p-3 capitalize">{u.role}</td>
                   <td className="p-3"><StatusChip state={u.account_status} /></td>
                   <td className="p-3">{u.verification_status ? <Link className="text-blue-600 hover:underline" to="/app/admin/verification">{u.verification_status.replaceAll('_', ' ')}</Link> : <span className="text-gray-600">—</span>}</td>
@@ -94,6 +96,7 @@ export default function Users({ role = '' }: { role?: string }) {
           </Card>
         </div>
       )}
+      {detail && <UserDetail id={detail} onClose={() => setDetail(null)} />}
     </div>
   )
 }

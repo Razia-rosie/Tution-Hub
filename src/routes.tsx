@@ -12,7 +12,6 @@ import Login from './pages/auth/Login'
 import { SignUp, RoleSelect, EmailVerify } from './pages/auth/Signup'
 import { Forgot, ForgotSent, Reset, ResetDone, Recover, Logout, Gate, AdminLogin } from './pages/auth/Recovery'
 import DesignSystem from './pages/DesignSystem'
-import Reference from './pages/Reference'
 import RolePage from './pages/RolePage'
 import RouteError from './components/RouteError'
 
@@ -58,8 +57,8 @@ export const router = createBrowserRouter([
           { path: 'admin/login', Component: AdminLogin },
         ],
       },
-      { path: 'design-system', Component: DesignSystem },
-      { path: 'reference', Component: Reference },
+      // Developer style guide; not part of production builds.
+      ...(import.meta.env.DEV ? [{ path: 'design-system', Component: DesignSystem }] : []),
       { path: 'app/:role', Component: RoleRedirect },
       { path: 'app/:role', Component: AppShell, children: [{ path: ':page/*', Component: RolePage }] },
     ],

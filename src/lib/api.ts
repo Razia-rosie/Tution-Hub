@@ -284,3 +284,22 @@ export function getAuditLog(filters: { action?: string; limit?: number; offset?:
   const query = new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)]))
   return authenticatedRequest<{ entries: AuditEntry[] }>(`/api/v1/workflow/admin/audit-logs?${query}`)
 }
+
+/**
+ * Generic access to the platform API, sharing the token refresh above.
+ * Public endpoints work signed out; when signed in they personalise results.
+ */
+export const api = {
+  get: <T,>(path: string) => (getStoredTokens() ? authenticatedRequest<T>(path) : request<T>(path, { method: 'GET' })),
+  post: <T = void,>(path: string, body?: unknown) => authenticatedRequest<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) }),
+  put: <T = void,>(path: string, body: unknown) => authenticatedRequest<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
+  del: <T = void,>(path: string) => authenticatedRequest<T>(path, { method: 'DELETE' }),
+  /** Multipart upload (no JSON content type, so the browser sets the boundary). */
+  form: async <T = void,>(path: string, form: FormData) => parse<T>(await authorizedFetch(path, { method: 'POST', body: form })),
+  /** Fetches a private file and returns an object URL; the caller revokes it. */
+  blobUrl: async (path: string) => {
+    const response = await authorizedFetch(path)
+    if (!response.ok) throw new ApiError(response.status, {})
+    return URL.createObjectURL(await response.blob())
+  },
+}

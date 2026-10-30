@@ -138,7 +138,7 @@ async function main() {
     await tutor.goto(`${WEB}/app/admin/verification`, { waitUntil: 'networkidle0' })
     check('tutor: cannot open admin pages', (await path(tutor)).startsWith('/app/tutor'))
     await tutor.goto(`${WEB}/app/tutor/dashboard`, { waitUntil: 'networkidle0' })
-    check('tutor: demo screens carry the sample-data notice', await waitText(tutor, 'Preview with sample data'))
+    check('tutor: dashboard shows real figures, no sample data', await waitText(tutor, 'Active tuitions') && !(await text(tutor)).includes('sample data'))
 
     // ---------- Coaching registration and verification ----------
     const coaching = await newPage(browser)

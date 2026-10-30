@@ -119,7 +119,21 @@ Administrator endpoints under `/api/v1/workflow/admin` (role `admin` only):
 - `POST /users/:id/suspend` (`{"reason"}`), `POST /users/:id/reactivate`
 - `GET /audit-logs?action=&limit=&offset=`
 
-No database migration is needed beyond `001` and `002`.
+Further APIs for the marketplace, messaging, tuitions, classrooms, coaching
+and administration live in `internal/platform` (routes in `routes.go`).
+
+## Migrations
+
+`go run ./cmd/migrate` applies pending files from `migrations/` in order and
+records them in `schema_migrations`. Databases created before the tool are
+baselined (001/002 recorded without re-running). It refuses any file with
+DROP/TRUNCATE/DELETE, so it only ever adds. Back up first:
+
+```sh
+docker compose exec -T mysql mysqldump -uroot -proot --single-transaction tuitionhub > backups/tuitionhub-$(date +%Y%m%d).sql
+DATABASE_URL='tuitionhub:tuitionhub@tcp(127.0.0.1:3306)/tuitionhub?parseTime=true&charset=utf8mb4&loc=UTC' go run ./cmd/migrate -dry-run
+DATABASE_URL='...' go run ./cmd/migrate
+```
 
 ## Security configuration
 
@@ -205,7 +219,9 @@ DATABASE_URL="$E2E_DATABASE_URL" JWT_SECRET=... HTTP_ADDR=:8090 DOCUMENT_DIR=/tm
 # from the repository root
 E2E_API=http://localhost:8090 node tests/verification-e2e.mjs            # API end to end
 API_PROXY_TARGET=http://localhost:8090 PORT=5174 pnpm dev                 # frontend for the test API
+E2E_API=http://localhost:8090 node tests/platform-e2e.mjs                 # all role journeys over HTTP
 E2E_WEB=http://127.0.0.1:5174 node tests/browser-e2e.mjs                  # browser end to end (Chrome)
+E2E_WEB=http://127.0.0.1:5174 E2E_API=http://localhost:8090 node tests/journeys-browser.mjs  # cross-role journeys in the UI
 npx tsc --noEmit -p . && pnpm build                                       # type-check and production build
 ```
 

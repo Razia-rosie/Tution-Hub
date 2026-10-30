@@ -77,11 +77,6 @@ export default function AppShell() {
         <header className="sticky top-0 z-30 flex flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-2.5 md:px-8">
           <Link to="/" className="font-heading font-bold text-navy-900 md:hidden">TuitionHub</Link>
           <div className="ml-auto flex items-center gap-2">
-            {role === 'parent' && (() => { const ck = s.pj.kids.filter((k) => k.link === 'confirmed'); const cur = ck.find((k) => k.short === s.child) ?? ck[0]
-              return ck.length === 0 ? <Link to="/app/parent/children/add" className="text-sm font-semibold text-blue-600 hover:underline">Link a child</Link> : (
-                <label className="flex items-center gap-2 text-sm"><span className="hidden text-gray-600 sm:inline">Child</span>
-                  <Select aria-label="Child switcher" value={cur.short} onChange={(e) => { s.setChild(e.target.value); s.toast(`Showing ${e.target.value}`, 'info') }} options={ck.map((k) => k.short)} className="!w-auto !py-1.5" />
-                </label>) })()}
             {role !== 'admin' && <span className="relative"><IconButton label={unread ? `Notifications, ${unread} unread` : 'Notifications'} onClick={() => nav(`/app/${role}/notifications`)}><Bell size={20} /></IconButton>{unread > 0 && <span aria-hidden className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-danger-600 px-1 text-center text-[10px] font-bold leading-4 text-white">{unread > 9 ? '9+' : unread}</span>}</span>}
             <Avatar name={s.user.name} size={32} />
           </div>

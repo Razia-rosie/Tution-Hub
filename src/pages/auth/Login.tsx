@@ -44,6 +44,8 @@ export default function Login() {
     } catch (error) {
       // 401 is deliberately the same for unknown emails and wrong passwords; other errors (rate limit, suspension) carry their own message.
       const status = error instanceof ApiError ? error.status : 0
+      // The server locks an account+address for 15 minutes after repeated failures.
+      if (status === 429) { setLocked(true); return }
       setFail(status === 401 ? 'wrong' : 'unknown')
       setFailMessage(status && status !== 401 && error instanceof Error ? error.message : 'We could not sign you in right now. Please try again.')
     } finally {

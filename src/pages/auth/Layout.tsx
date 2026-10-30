@@ -14,7 +14,7 @@ export function AuthLayout() {
             {[[BadgeCheck, 'Tutors, students and guardians are all verified'], [MapPin, 'Only your approximate area is shown until you agree'], [Lock, 'NID and documents stay masked from the public']].map(([I, t]) => { const Icon = I as typeof Lock; return <li key={t as string} className="flex items-start gap-3 text-sm"><Icon size={18} strokeWidth={1.5} className="mt-0.5 shrink-0 text-teal-600" aria-hidden />{t as string}</li> })}
           </ul>
         </div>
-        <p className="text-xs text-blue-100/80">Prototype with fictional data. No real OTP, email or payments.</p>
+        <p className="text-xs text-blue-100/80">Your documents are seen only by you and the TuitionHub review team.</p>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between px-6 py-5">

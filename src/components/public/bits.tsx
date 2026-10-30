@@ -2,7 +2,6 @@ import { createContext, useCallback, useContext, useState, type ReactNode } from
 import { Link, useLocation } from 'react-router'
 import { ArrowRight, Lock, MapPin, Star } from 'lucide-react'
 import { Avatar, btnClass, Card, Chip, Modal, VerifyBadge, cx } from '../ui'
-import type { Tutor } from '../../lib/data'
 
 const GateCtx = createContext<(what: string) => void>(() => {})
 export const useGate = () => useContext(GateCtx)
@@ -59,35 +58,6 @@ export function Stars({ value, size = 14 }: { value: number; size?: number }) {
     <span className="inline-flex items-center gap-0.5" role="img" aria-label={`${value} out of 5`}>
       {[1, 2, 3, 4, 5].map((i) => <Star key={i} size={size} strokeWidth={1.5} className={i <= Math.round(value) ? 'fill-navy-700 text-navy-700' : 'fill-gray-100 text-gray-200'} aria-hidden />)}
     </span>
-  )
-}
-
-export function TutorCard({ t }: { t: Tutor }) {
-  const gate = useGate()
-  return (
-    <Card className="flex flex-col" pad={false}>
-      <div className="flex gap-4 p-5">
-        <Avatar name={t.name} size={52} />
-        <div className="min-w-0">
-          <Link to={`/tutors/${t.id}`} className="font-heading text-lg font-bold text-navy-900 hover:text-blue-600">{t.short}</Link>
-          <p className="text-sm text-gray-600">{t.subjects.join(' · ')}</p>
-          <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-600"><MapPin size={12} aria-hidden /> {t.area} · {t.classes}</p>
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-gray-100 px-5 py-3 text-sm">
-        <span className="inline-flex items-center gap-1 font-semibold text-navy-900"><Star size={14} className="fill-warning-600 text-warning-600" aria-hidden /> {t.rating}<span className="font-normal text-gray-600">({t.reviews})</span></span>
-        <span className="text-gray-600">{t.verified} verified tuitions</span>
-        <span className="tabular ml-auto font-semibold text-navy-900">৳{t.fee.toLocaleString('en-US')}<span className="font-normal text-gray-600">/mo</span></span>
-      </div>
-      <div className="flex flex-wrap gap-1.5 px-5 pb-4">
-        {t.badges.slice(0, 3).map((b) => <VerifyBadge key={b} kind={b} />)}
-        <Chip tone="blue">{t.mode}</Chip>
-      </div>
-      <div className="mt-auto flex gap-2 border-t border-gray-100 p-4">
-        <Link to={`/tutors/${t.id}`} className={cx(btnClass('secondary', 'sm'), 'flex-1')}>View profile</Link>
-        <button onClick={() => gate('send interest or message this tutor')} className={cx(btnClass('primary', 'sm'), 'flex-1')}>Contact <ArrowRight size={14} aria-hidden /></button>
-      </div>
-    </Card>
   )
 }
 

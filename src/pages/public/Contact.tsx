@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { CheckCircle2, Clock, Mail, MapPin, Phone } from 'lucide-react'
-import { Button, btnClass, Card, DemoTag, Field, Input, Select, Textarea } from '../../components/ui'
+import { Button, btnClass, Card, Field, Input, Select, Textarea } from '../../components/ui'
+import { api } from '../../lib/api'
+import { errMsg } from '../../lib/platform'
+import { useLoad } from '../../lib/useLoad'
 import { PageHero, Section } from '../../components/public/bits'
 import { normalizePhone, validEmail, validPhone } from '../../lib/validate'
 import { PhoneInput } from '../../components/ui'
@@ -10,6 +13,8 @@ export default function Contact() {
   const [f, setF] = useState({ name: '', email: '', phone: '', topic: 'General question', msg: '' })
   const [touched, setTouched] = useState(false)
   const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle')
+  const [sendError, setSendError] = useState('')
+  const info = useLoad(() => api.get<{ support_email?: string }>('/api/v1/public/info'), [])
   const err = {
     name: f.name.trim().length < 2 ? 'Enter your full name.' : '',
     email: !f.email ? 'Enter your email address.' : !validEmail(f.email) ? 'This email looks incomplete. Use a format like name@example.com.' : '',
@@ -21,7 +26,12 @@ export default function Contact() {
   const submit = (e: React.FormEvent) => {
     e.preventDefault(); setTouched(true)
     if (bad) return
-    setState('sending'); setTimeout(() => setState('sent'), 900)
+    setState('sending'); setSendError('')
+    // Topics map to support-queue categories so safety reports are triaged first.
+    const category = f.topic === 'Safety concern' ? 'safety' : 'support'
+    api.post('/api/v1/public/contact', { name: f.name, email: f.email, category, subject: f.topic, body: f.phone ? `${f.msg}\n\nPhone: ${f.phone}` : f.msg })
+      .then(() => setState('sent'))
+      .catch((e2) => { setSendError(errMsg(e2, 'Your message could not be sent. Please try again.')); setState('idle') })
   }
   return (
     <>
@@ -34,12 +44,12 @@ export default function Contact() {
                 <CheckCircle2 size={48} strokeWidth={1.5} className="mx-auto text-emerald-600" aria-hidden />
                 <h2 className="mt-4 text-2xl">Message received</h2>
                 <p className="mx-auto mt-2 max-w-sm text-gray-600">Thank you, {f.name.split(' ')[0]}. We will reply to {f.email} within two working days.</p>
-                <p className="mt-3"><DemoTag label="Demo" title="No message is actually sent." /></p>
                 <div className="mt-6 flex justify-center gap-3"><Link to="/" className={btnClass('primary')}>Back to home</Link><button className={btnClass('secondary')} onClick={() => { setF({ name: '', email: '', phone: '', topic: 'General question', msg: '' }); setTouched(false); setState('idle') }}>Send another</button></div>
               </div>
             ) : (
               <form onSubmit={submit} noValidate className="space-y-5">
-                <div className="flex items-center justify-between"><h2 className="text-xl">Send a message</h2><DemoTag label="Demo" title="Nothing is sent. Simulated submit." /></div>
+                <div className="flex items-center justify-between"><h2 className="text-xl">Send a message</h2></div>
+                {sendError && <p role="alert" className="text-sm text-danger-600">{sendError}</p>}
                 <div className="grid gap-5 sm:grid-cols-2">
                   <Field label="Full name" error={show('name')}>{(id) => <Input id={id} aria-invalid={!!show('name')} autoComplete="name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />}</Field>
                   <Field label="Email" error={show('email')}>{(id) => <Input id={id} type="email" aria-invalid={!!show('email')} autoComplete="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />}</Field>
@@ -54,8 +64,8 @@ export default function Contact() {
           <div className="space-y-4">
             <Card><h3 className="text-lg">Other ways to reach us</h3>
               <ul className="mt-4 space-y-4 text-sm">
-                <li className="flex gap-3"><Mail size={18} className="mt-0.5 text-blue-600" aria-hidden /><span>hello@tuitionhub.demo<br /><span className="text-gray-600">Fictional address</span></span></li>
-                <li className="flex gap-3"><Phone size={18} className="mt-0.5 text-blue-600" aria-hidden /><span>+880 1700-000000<br /><span className="text-gray-600">Fictional number</span></span></li>
+                {info.data?.support_email ? <li className="flex gap-3"><Mail size={18} className="mt-0.5 text-blue-600" aria-hidden /><a className="text-blue-600 hover:underline" href={`mailto:${info.data.support_email}`}>{info.data.support_email}</a></li> : null}
+                <li className="flex gap-3"><Phone size={18} className="mt-0.5 text-blue-600" aria-hidden /><span>Signed-in users can also use Safety and support in their dashboard.</span></li>
                 <li className="flex gap-3"><MapPin size={18} className="mt-0.5 text-blue-600" aria-hidden /><span>Dhaka, Bangladesh<br /><span className="text-gray-600">Remote team</span></span></li>
                 <li className="flex gap-3"><Clock size={18} className="mt-0.5 text-blue-600" aria-hidden /><span>Sat to Thu, 9:00 AM to 6:00 PM</span></li>
               </ul></Card>

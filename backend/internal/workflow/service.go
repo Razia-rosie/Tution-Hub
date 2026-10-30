@@ -49,6 +49,17 @@ type Profile struct {
 	BirthDate         *time.Time      `db:"birth_date" json:"birth_date"`
 	GuardianNotes     *string         `db:"guardian_notes" json:"guardian_notes"`
 	CompletionPercent uint8           `db:"completion_percent" json:"completion_percent"`
+	Bio               *string         `db:"bio" json:"bio"`
+	CurrentStudy      *string         `db:"current_study" json:"current_study"`
+	Results           *string         `db:"results" json:"results"`
+	Mediums           json.RawMessage `db:"mediums" json:"mediums"`
+	Gender            *string         `db:"gender" json:"gender"`
+	HasPhoto          bool            `db:"has_photo" json:"has_photo"`
+	Listed            bool            `db:"listed" json:"listed"`
+	ClassName         *string         `db:"class_name" json:"class_name"`
+	OpeningHours      *string         `db:"opening_hours" json:"opening_hours"`
+	Established       *string         `db:"established" json:"established"`
+	District          *string         `db:"district" json:"district"`
 }
 
 type Verification struct {
@@ -105,7 +116,7 @@ func (s *Service) GetDashboard(ctx context.Context, userID string) (map[string]a
 	// NULL JSON columns cannot scan into json.RawMessage, so they are coalesced to a JSON null literal.
 	var profile any
 	var stored Profile
-	err := s.db.GetContext(ctx, &stored, `SELECT user_id, display_name, institution, education, COALESCE(subjects, 'null') AS subjects, COALESCE(classes, 'null') AS classes, COALESCE(areas, 'null') AS areas, COALESCE(teaching_modes, 'null') AS teaching_modes, COALESCE(availability, 'null') AS availability, experience_years, fee_expectation, address, birth_date, guardian_notes, completion_percent FROM role_profiles WHERE user_id = ?`, userID)
+	err := s.db.GetContext(ctx, &stored, `SELECT user_id, display_name, institution, education, COALESCE(subjects, 'null') AS subjects, COALESCE(classes, 'null') AS classes, COALESCE(areas, 'null') AS areas, COALESCE(teaching_modes, 'null') AS teaching_modes, COALESCE(availability, 'null') AS availability, experience_years, fee_expectation, address, birth_date, guardian_notes, completion_percent, bio, current_study, results, COALESCE(mediums, 'null') AS mediums, gender, photo_key IS NOT NULL AS has_photo, listed, class_name, opening_hours, established, district FROM role_profiles WHERE user_id = ?`, userID)
 	if err == nil {
 		profile = stored
 	} else if !errors.Is(err, sql.ErrNoRows) {

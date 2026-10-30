@@ -1,6 +1,6 @@
 import { Link } from 'react-router'
 import { ArrowRight, BadgeCheck, Bell, CheckCircle2, Eye, EyeOff, FileText, Flag, GraduationCap, HeartHandshake, Home, Lock, MapPin, MessageSquare, ScanSearch, ShieldCheck, Users, Building2, UserX, Search, Handshake } from 'lucide-react'
-import { btnClass, Card, Chip, DemoTag } from '../../components/ui'
+import { btnClass, Card } from '../../components/ui'
 import { PageHero, Section } from '../../components/public/bits'
 
 function Cta({ title, body }: { title: string; body: string }) {
@@ -19,20 +19,20 @@ function Cta({ title, body }: { title: string; body: string }) {
 }
 
 const FLOWS = [
-  { role: 'Parent / Guardian', icon: Users, to: '/signup/parent', steps: ['Verify yourself and link your child', 'Post a tuition or search tutors', 'Review matches and accept an interest', 'Chat, agree on terms, start the tuition', 'Follow attendance, homework and monthly reports'] },
-  { role: 'Tutor', icon: GraduationCap, to: '/signup/tutor', steps: ['Complete identity, education and experience checks', 'Post availability or browse tuition posts', 'Send interest and chat after a mutual match', 'Confirm the agreement and start teaching', 'Build trust through reviews, attendance and progress'] },
-  { role: 'Student', icon: HeartHandshake, to: '/signup/student', steps: ['Verify your student status', 'Post what you need or find a tutor', 'Compare matches with plain-language reasons', 'Study with a clear schedule and homework list', 'See your own progress improve'] },
-  { role: 'Coaching / Institute', icon: Building2, to: '/signup/coaching', steps: ['Register and verify your organization', 'Add teachers, students and batches', 'Run classes, attendance and exams', 'Publish results and parent reports', 'Be discoverable in the coaching directory'] },
+  { role: 'Parent / Guardian', icon: Users, to: '/signup/parent', steps: ["Link your child's student account (your child approves)", 'Post a tuition or search verified tutors', 'Accept an application or a chat request', 'Book a demo class, then both sides confirm terms', 'Follow attendance, homework, diary and results'] },
+  { role: 'Tutor', icon: GraduationCap, to: '/signup/tutor', steps: ['Upload a photo of your ID; our team reviews it by hand', 'Browse tuition posts and apply', 'Chat once a guardian accepts', 'Run the demo class and confirm terms', 'Teach from your classroom: schedule, attendance, homework, diary'] },
+  { role: 'Student', icon: HeartHandshake, to: '/signup/student', steps: ['Create your student account', 'Approve your guardian, or search tutors yourself', 'Join your classroom once a tuition starts', 'Submit homework and see feedback', 'Track your attendance and results'] },
+  { role: 'Coaching / Institute', icon: Building2, to: '/signup/coaching', steps: ['Upload your trade licence and owner ID for manual review', 'Add teachers, courses, students and batches', 'Run classes, attendance and homework', 'Enter marks, publish results, track fees', 'Be listed in the coaching directory'] },
 ]
 
 export function HowItWorksPage() {
   return (
     <>
       <PageHero eyebrow="How it works" title="One loop, built so everyone knows who they are dealing with."
-        lead="Every tuition on TuitionHub follows the same path: verify, match, agree, teach, review. The steps are the same for everyone, so parents never have to guess." />
+        lead="Every tuition on TuitionHub follows the same path: verify, find, agree, teach, review. The steps are the same for everyone, so parents never have to guess." />
       <Section title="The core loop" lead="Five stages, each with a clear check before moving on.">
         <ol className="grid gap-4 md:grid-cols-5">
-          {[['Verify', 'Identity, education and student or guardian status.', ShieldCheck], ['Match', 'Transparent score across subject, class, schedule, location and budget.', ScanSearch], ['Agree', 'Mutual interest, chat, then a digital agreement.', Handshake], ['Teach', 'Schedule, attendance, homework and safety notifications.', Home], ['Review', 'Verified reviews and reports after completion.', BadgeCheck]].map(([t, b, I], i) => {
+          {[['Verify', 'Tutors and coaching centres are checked by hand from photos of their documents.', ShieldCheck], ['Find', 'Search with filters, or post a tuition and receive applications.', ScanSearch], ['Agree', 'Chat, a demo class, then both sides confirm the same terms.', Handshake], ['Teach', 'Schedule, attendance, homework, diary and guardian notifications.', Home], ['Review', 'Families with a confirmed tuition can review; anyone can report a problem.', BadgeCheck]].map(([t, b, I], i) => {
             const Icon = I as typeof ShieldCheck
             return (
               <li key={t as string} className="rounded-card border border-gray-200 bg-white p-6 shadow-card">
@@ -58,27 +58,25 @@ export function HowItWorksPage() {
           ))}
         </div>
       </Section>
-      <Section title="How matching decides" lead="Matching is a transparent rule-based score, not a black box. This is a demo weighting, shown so you can see why a tutor appears.">
+      <Section title="How search works" lead="No hidden ranking. You choose the filters; we list only verified tutors and centres.">
         <Card className="max-w-3xl">
-          <div className="mb-3 flex items-center gap-2"><Chip tone="blue">Demo weights</Chip><DemoTag label="Demo" title="Illustrative weights. Not machine learning." /></div>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
-            {[['Subject', 25], ['Class', 15], ['Schedule', 15], ['Location', 15], ['Budget', 15], ['Verification', 5], ['Experience', 5], ['Preferences', 5]].map(([k, v]) => <div key={k as string}><dt className="text-gray-600">{k}</dt><dd className="tabular font-heading text-xl font-bold text-navy-900">{v}</dd></div>)}
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
+            {[['Filter by', 'Subject, class, area, mode, fee'], ['Listed only if', 'Verified and active'], ['Ordered by', 'Rating, then number of reviews']].map(([k, v]) => <div key={k}><dt className="text-gray-600">{k}</dt><dd className="font-medium text-navy-900">{v}</dd></div>)}
           </dl>
-          <p className="mt-4 text-sm text-gray-600">A tutor who does not teach the requested subject is excluded, whatever the other scores.</p>
         </Card>
       </Section>
-      <Cta title="Ready to see it in action?" body="Create a free account and explore a fully demo-data prototype." />
+      <Cta title="Ready to start?" body="Create a free account for your role." />
     </>
   )
 }
 
 const SAFETY = [
-  { icon: BadgeCheck, t: 'Everyone is verified', b: 'Tutors, students and guardians each pass a role-specific check before they can contact anyone.' },
-  { icon: MapPin, t: 'Approximate location first', b: 'Only the area is shown until both sides agree. The exact address is revealed to the tutor only, on request, and logged.' },
-  { icon: Bell, t: 'Parents are told in real time', b: 'Arrival and completion notifications go to the guardian for every class.' },
-  { icon: MessageSquare, t: 'Chat opens after mutual interest', b: 'No cold messages. Both sides must agree to connect first.' },
-  { icon: Flag, t: 'Report and block, always', b: 'Every profile, post and conversation has Report and Block. Reports go to trained reviewers.' },
-  { icon: EyeOff, t: 'Documents stay masked', b: 'NID and certificates are masked for everyone except authorised reviewers, and each reveal is audited.' },
+  { icon: BadgeCheck, t: 'Teachers are verified by hand', b: 'Tutors and coaching centres upload photos of their ID or licence; a TuitionHub administrator reviews each one before they are listed.' },
+  { icon: MapPin, t: 'Area only, until you agree', b: 'Searches show the area. Phone numbers and email are shared only after both sides confirm a tuition.' },
+  { icon: Bell, t: 'Guardians are kept informed', b: 'Absences, class changes, new homework, grades and diary entries reach linked guardians as notifications.' },
+  { icon: MessageSquare, t: 'No cold messages', b: 'Chat opens only when a tutor accepts your request or you accept their application.' },
+  { icon: Flag, t: 'Report and block', b: 'Conversations have Report and Block, and posts can be reported. Reports go to the TuitionHub team.' },
+  { icon: EyeOff, t: 'Documents stay private', b: 'Verification photos are visible only to their owner and administrators, and every administrator view is logged.' },
 ]
 
 export function SafetyPage() {
@@ -94,13 +92,12 @@ export function SafetyPage() {
           ))}
         </div>
       </Section>
-      <Section tint title="Class safety timeline" lead="Every class follows the same four notifications, so a guardian is never left wondering.">
+      <Section tint title="What guardians hear about" lead="Notifications go to every guardian linked to the student.">
         <ol className="grid gap-4 md:grid-cols-4">
-          {['Tutor arrives at the tuition', 'Parent is notified', 'Class is completed', 'Parent is notified again'].map((s, i) => (
+          {['A class is scheduled, moved or cancelled', 'Attendance is marked; absences alert you', 'Homework is set and graded', 'The day\'s diary is posted'].map((s, i) => (
             <li key={s} className="relative rounded-card border border-gray-200 bg-offwhite-50 p-6"><span className="tabular flex h-8 w-8 items-center justify-center rounded-full bg-navy-900 text-sm font-bold text-white">{i + 1}</span><p className="mt-3 font-medium text-navy-900">{s}</p></li>
           ))}
         </ol>
-        <p className="mt-4 flex items-center gap-2 text-sm text-gray-600"><DemoTag label="Demo" /> Check-ins are simulated by a button. There is no GPS verification in this prototype.</p>
       </Section>
       <Section title="What we never show publicly">
         <Card className="max-w-3xl"><ul className="grid gap-3 text-sm sm:grid-cols-2">
@@ -115,29 +112,22 @@ export function SafetyPage() {
 export function AboutPage() {
   return (
     <>
-      <PageHero eyebrow="About TuitionHub" title="A calmer, safer way to find a tutor in Bangladesh." lead="TuitionHub is a prototype for a safety-first tutoring marketplace. It starts from trust, then adds matching, scheduling and progress on top." />
+      <PageHero eyebrow="About TuitionHub" title="A calmer, safer way to find a tutor in Bangladesh." lead="TuitionHub is a safety-first tutoring marketplace. It starts from trust, then adds search, scheduling and progress on top." />
       <Section title="What we believe">
         <div className="grid gap-4 md:grid-cols-3">
-          {[['Trust before convenience', 'A tutor in your home should be someone you can verify, not just someone you can message.', ShieldCheck], ['Plain language for parents', 'Every dashboard begins with what happened today, in words, one child at a time.', Users], ['Honest scoring', 'Ratings come from verified reviews only. Trust Score and rank are separate, and we show how they are built.', FileText]].map(([t, b, I]) => {
+          {[['Trust before convenience', 'A tutor in your home should be someone you can verify, not just someone you can message.', ShieldCheck], ['Plain language for parents', 'Every dashboard begins with what happened today, in words, one child at a time.', Users], ['Honest ratings', 'Only families with a confirmed tuition can review, and tutors can reply publicly.', FileText]].map(([t, b, I]) => {
             const Icon = I as typeof Users
             return <Card key={t as string}><Icon className="text-blue-600" strokeWidth={1.5} aria-hidden /><h3 className="mt-4 text-lg">{t as string}</h3><p className="mt-1 text-sm text-gray-600">{b as string}</p></Card>
           })}
         </div>
       </Section>
-      <Section tint title="About this prototype">
-        <div className="grid items-start gap-8 md:grid-cols-2">
-          <div className="space-y-3 text-gray-600">
-            <p>This is a clickable demonstration. Every person, tuition, review, score and fee in it is fictional.</p>
-            <p>There is no real OTP, payment processing, GPS, AI or database. Simulated behaviour carries a <DemoTag /> tag, and the Demo controls drawer lets you switch role, simulate verification and fast-forward time.</p>
-          </div>
-          <Card><h3 className="text-lg">Explore the prototype</h3><ul className="mt-3 space-y-2 text-sm">
-            <li><Link to="/reference" className="font-semibold text-blue-600 hover:underline">Reference: screen inventory</Link></li>
-            <li><Link to="/design-system" className="font-semibold text-blue-600 hover:underline">Design system</Link></li>
-            <li><Link to="/login" className="font-semibold text-blue-600 hover:underline">Log in with a demo account</Link></li>
-          </ul></Card>
+      <Section tint title="What TuitionHub does not do">
+        <div className="space-y-3 text-gray-600">
+          <p>TuitionHub does not move money. Fees are agreed and paid directly between families and tutors; the platform only records them so both sides have the same history.</p>
+          <p>Verification is done by people, not software: there is no automated document scanning or face matching.</p>
         </div>
       </Section>
-      <Cta title="Be part of the pilot story" body="Create a demo account and walk through each role." />
+      <Cta title="Join TuitionHub" body="Create a free account for your role." />
     </>
   )
 }

@@ -89,7 +89,7 @@ export default function DesignSystem() {
           <Button variant="secondary" onClick={() => setModal(true)}>Open modal</Button>
           <Button variant="secondary" onClick={() => s.toast('Saved (demo)', 'success')}>Show toast</Button>
           <VerifiedGate what="Sending interest"><Button>Send interest</Button></VerifiedGate>
-          <span className="text-xs text-gray-600">Locked until verified. Use Demo controls to simulate approval.</span>
+          <span className="text-xs text-gray-600">Locked until an administrator approves verification.</span>
         </div>
       </Sec>
 

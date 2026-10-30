@@ -82,8 +82,8 @@ export default function PublicLayout() {
           </div>
           <div className="mt-12 flex flex-col gap-4 border-t border-white/15 pt-6 text-sm text-navy-200 md:flex-row md:items-center md:justify-between">
             <p className="flex items-start gap-2"><FlaskConical size={16} strokeWidth={1.5} className="mt-0.5 shrink-0" aria-hidden />
-              <span><strong className="text-white">Demo data — fictional.</strong> This is a clickable prototype. All people, scores, reviews and payments are invented. No real OTP, payments, GPS, AI or database.</span></p>
-            <p className="shrink-0">© 2026 TuitionHub (prototype)</p>
+              <span>Tutors and coaching centres are verified by hand. TuitionHub records fees but does not process payments.</span></p>
+            <p className="shrink-0">© {new Date().getFullYear()} TuitionHub</p>
           </div>
         </div>
       </footer>

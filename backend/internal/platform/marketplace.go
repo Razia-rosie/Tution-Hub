@@ -366,6 +366,18 @@ const applicationSelect = `SELECT a.id, a.listing_id, a.tutor_id, t.name AS tuto
 	FROM tuition_applications a JOIN tuition_listings l ON l.id = a.listing_id JOIN users t ON t.id = a.tutor_id JOIN users o ON o.id = l.owner_id`
 
 func (s *Service) Apply(ctx context.Context, tutorID, listingID, note string) error {
+	if !s.SettingBool(ctx, "tutor_applications_open") {
+		return forbidden("tutor applications are paused by the TuitionHub team; please try again later")
+	}
+	if limit := s.SettingInt(ctx, "max_applications_per_day"); limit > 0 {
+		var today int
+		if err := s.db.GetContext(ctx, &today, `SELECT COUNT(*) FROM tuition_applications WHERE tutor_id = ? AND created_at >= UTC_TIMESTAMP(6) - INTERVAL 1 DAY`, tutorID); err != nil {
+			return err
+		}
+		if today >= limit {
+			return apiError{429, "you have reached today's application limit; please try again tomorrow"}
+		}
+	}
 	var owner, status string
 	if err := s.db.QueryRowxContext(ctx, `SELECT owner_id, status FROM tuition_listings WHERE id = ?`, listingID).Scan(&owner, &status); errors.Is(err, sql.ErrNoRows) {
 		return notFound("tuition post not found")
