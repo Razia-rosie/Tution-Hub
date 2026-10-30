@@ -3,6 +3,8 @@ dist/
 build/
 .cache/
 .env*
+# Templates hold placeholders only and document the configuration.
+!.env.example
 .vite/
 .runtime/
 vite.config.*.timestamp-*
@@ -29,3 +31,6 @@ private_documents/
 
 # Local database backups contain personal data and password hashes.
 backend/backups/
+
+# Local assistant and editor tooling (preview launch configs, session files).
+.claude/
