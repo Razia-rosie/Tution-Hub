@@ -12,6 +12,7 @@ single-page app (`src/`) talking to a Go REST API (`backend/`) backed by MySQL 8
 | [workflows.md](workflows.md) | Verification, hiring, tuition agreement, classroom and coaching rules |
 | [security.md](security.md) | Authentication, sessions, access control, uploads, rate limiting, audit |
 | [testing.md](testing.md) | Test suites and how to run them against an isolated database |
+| [demo-accounts.md](demo-accounts.md) | Development-only demo accounts and connected demo data |
 | [deployment.md](deployment.md) | Requirements for a production deployment |
 | [known-issues.md](known-issues.md) | Open gaps, technical debt and untested areas |
 
