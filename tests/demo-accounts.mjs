@@ -8,17 +8,18 @@
 //   DEMO_API=http://localhost:8090 DEMO_WEB=http://127.0.0.1:5174 node tests/demo-accounts.mjs
 //   (--logins-only: only sign-in, refresh, sign-out and the browser checks)
 //
-// Passwords are read from the git-ignored .env.demo.local and never printed.
+// Passwords come from scripts/demo-accounts.mjs (or a local .env.demo.local override).
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { demoAccounts } from '../scripts/demo-accounts.mjs'
 import puppeteer from 'puppeteer-core'
 import { CHROME, check, click, consoleErrors, fill, newPage, summary, text, wait, waitText } from './lib/browser.mjs'
 
 const API = process.env.DEMO_API ?? 'http://localhost:8090'
 const WEB = process.env.DEMO_WEB ?? 'http://127.0.0.1:5174'
-const env = Object.fromEntries(readFileSync(new URL('../.env.demo.local', import.meta.url), 'utf8').split('\n').map((l) => l.match(/^([A-Z0-9_]+)=(.*)$/)).filter(Boolean).map((m) => [m[1], m[2]]))
-const roleOf = { tutor1: 'tutor', tutor2: 'tutor', coaching1: 'coaching', coaching2: 'coaching', parent1: 'parent', parent2: 'parent', student1: 'student', student2: 'student' }
-const U = Object.fromEntries(Object.entries(roleOf).map(([k, role]) => [k, { key: k, role, email: `demo.${k}@example.test`, password: env[`DEMO_${k.toUpperCase()}_PASSWORD`] }]))
+const envFile = new URL('../.env.demo.local', import.meta.url)
+const env = existsSync(envFile) ? Object.fromEntries(readFileSync(envFile, 'utf8').split('\n').map((l) => l.match(/^([A-Z0-9_]+)=(.*)$/)).filter(Boolean).map((m) => [m[1], m[2]])) : {}
+const U = Object.fromEntries(Object.entries(demoAccounts).map(([k, a]) => [k, { key: k, role: a.role, email: a.email, password: env[`DEMO_${k.toUpperCase()}_PASSWORD`] ?? a.password }]))
 
 async function call(method, path, token, body) {
   const headers = {}

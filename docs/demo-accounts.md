@@ -2,7 +2,28 @@
 
 `scripts/seed-demo.mjs` creates eight demo accounts in a **local development database**: two each
 of tutor, coaching centre, guardian and student, connected to each other so every workflow can be
-tried by hand. It never runs against production, and no password is stored in this repository.
+tried by hand. It never runs against production.
+
+## Credentials
+
+These passwords are **public on purpose**: the accounts are fictional and exist only in local
+development databases created by this script. Never load them into a production database.
+
+Sign in at `http://localhost:5173/login`.
+
+| Role | Name | Email | Password |
+|---|---|---|---|
+| Tutor | Arif Hossain | `demo.tutor1@example.test` | `Demo-imxf-pPs5-Un9n` |
+| Tutor | Sadia Rahman | `demo.tutor2@example.test` | `Demo-Z557-fCDV-zg6k` |
+| Coaching centre | Bright Future Coaching | `demo.coaching1@example.test` | `Demo-WrmE-cZuC-U5Zb` |
+| Coaching centre | Pathshala Academy | `demo.coaching2@example.test` | `Demo-qDAX-B8T6-Sy7R` |
+| Guardian | Farzana Akter | `demo.parent1@example.test` | `Demo-SLaZ-Z3Pp-f8vy` |
+| Guardian | Kamal Uddin | `demo.parent2@example.test` | `Demo-JL72-iuS5-ELAF` |
+| Student | Rafi Hasan | `demo.student1@example.test` | `Demo-XAsa-PnEN-2JzC` |
+| Student | Nabila Islam | `demo.student2@example.test` | `Demo-4Ty3-HEjf-qJjt` |
+
+The administrator account is **not** a demo account and its password is not published; create it
+with `cmd/bootstrap-admin` ([setup.md](setup.md#first-administrator)).
 
 ## What it creates
 
@@ -37,9 +58,9 @@ and student1's model test awaits submission.
   in the app survive a rerun.
 - Safety: it requires `--yes`, refuses any API that is not on `localhost`, refuses
   `APP_ENV=production`, and stops if the server does not return a development email token.
-- Passwords are generated on first run into **`.env.demo.local`** (git-ignored, readable only by
-  your user). A private credential report is written to **`.runtime/demo-accounts-<label>.md`**
-  (git-ignored).
+- The accounts and their passwords are defined in `scripts/demo-accounts.mjs`. A git-ignored
+  `.env.demo.local` may override a password (`DEMO_TUTOR1_PASSWORD=...`). A status report is written
+  to `.runtime/demo-accounts-<label>.md` (git-ignored).
 
 ## Running it
 

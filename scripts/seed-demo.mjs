@@ -10,15 +10,16 @@
 //
 //   DEMO_API=http://localhost:8080 node scripts/seed-demo.mjs --yes
 //
-// Passwords live only in the git-ignored .env.demo.local (generated on first
-// run); a private credential report is written to .runtime/. Optional
+// The demo passwords are published in docs/demo-accounts.md: these accounts are
+// for local development only and must never be loaded into production. A
+// credential report is written to .runtime/. Optional
 // DEMO_ADMIN_EMAIL / DEMO_ADMIN_PASSWORD let the script record the approval of
 // the first tutor and centre; without them those stay pending for you to
 // review in the admin dashboard, and a rerun after approval adds the rest.
 // See docs/demo-accounts.md.
 
-import { randomInt } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { demoAccounts } from './demo-accounts.mjs'
 
 const root = new URL('../', import.meta.url)
 const ENV_FILE = new URL('.env.demo.local', root)
@@ -49,21 +50,10 @@ function readEnvFile() {
   return values
 }
 const envValues = readEnvFile()
-function generatePassword() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
-  const group = () => Array.from({ length: 4 }, () => alphabet[randomInt(alphabet.length)]).join('')
-  return `Demo-${group()}-${group()}-${group()}`
-}
+// Demo passwords are published in docs/demo-accounts.md (these accounts exist
+// only in local development databases). .env.demo.local may override them.
 function passwordFor(key) {
-  const name = `DEMO_${key.toUpperCase()}_PASSWORD`
-  if (!envValues[name]) {
-    envValues[name] = generatePassword()
-    const header = '# Local demo-account passwords for scripts/seed-demo.mjs. Git ignores this file; never commit it.\n'
-    const body = Object.entries(envValues).map(([k, v]) => `${k}=${v}`).join('\n')
-    writeFileSync(ENV_FILE, header + body + '\n', { mode: 0o600 })
-    chmodSync(ENV_FILE, 0o600)
-  }
-  return envValues[name]
+  return envValues[`DEMO_${key.toUpperCase()}_PASSWORD`] ?? accounts[key].password
 }
 
 // ---------- HTTP ----------
@@ -99,16 +89,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 const month = new Date().toISOString().slice(0, 7)
 
 // ---------- accounts ----------
-const accounts = {
-  tutor1: { role: 'tutor', name: 'Arif Hossain', email: 'demo.tutor1@example.test', approve: true },
-  tutor2: { role: 'tutor', name: 'Sadia Rahman', email: 'demo.tutor2@example.test', approve: false },
-  coaching1: { role: 'coaching', name: 'Bright Future Coaching', email: 'demo.coaching1@example.test', approve: true },
-  coaching2: { role: 'coaching', name: 'Pathshala Academy', email: 'demo.coaching2@example.test', approve: false },
-  parent1: { role: 'parent', name: 'Farzana Akter', email: 'demo.parent1@example.test' },
-  parent2: { role: 'parent', name: 'Kamal Uddin', email: 'demo.parent2@example.test' },
-  student1: { role: 'student', name: 'Rafi Hasan', email: 'demo.student1@example.test' },
-  student2: { role: 'student', name: 'Nabila Islam', email: 'demo.student2@example.test' },
-}
+const accounts = structuredClone(demoAccounts)
 
 let devServerConfirmed = false
 async function ensureAccount(key) {
@@ -410,7 +391,7 @@ function writeReport() {
     const verification = a.role === 'tutor' || a.role === 'coaching' ? (a.verification ?? 'not submitted') : 'not required'
     return `| ${a.role} | ${a.name} | ${a.email} | \`${a.password}\` | ${a.accountStatus ?? '?'} | ${verification} | ${a.emailVerified ? 'verified' : 'pending'} |`
   })
-  const text = `# TuitionHub demo accounts (${LABEL}) — PRIVATE, do not commit\n\nAPI: ${API}  \nLogin: ${WEB}/login  \nGenerated: ${new Date().toISOString()}\n\n| Role | Name | Email | Password | Account status | Verification | Email |\n|---|---|---|---|---|---|---|\n${rows.join('\n')}\n\nNo real email is sent: email addresses were verified with the development token workflow.\n`
+  const text = `# TuitionHub demo accounts (${LABEL}) — local report\n\nAPI: ${API}  \nLogin: ${WEB}/login  \nGenerated: ${new Date().toISOString()}\n\n| Role | Name | Email | Password | Account status | Verification | Email |\n|---|---|---|---|---|---|---|\n${rows.join('\n')}\n\nNo real email is sent: email addresses were verified with the development token workflow.\n`
   writeFileSync(file, text, { mode: 0o600 })
   chmodSync(file, 0o600)
   return decodeURIComponent(file.pathname)
@@ -429,7 +410,7 @@ async function main() {
   await supportJourney()
   for (const a of Object.values(accounts)) a.accountStatus = (await dashboard(a)).account.status // for the report
   const report = writeReport()
-  console.log(`\nDone. ${log.length} changes. Private credential report: ${report}`)
+  console.log(`\nDone. ${log.length} changes. Credential report: ${report}`)
   if (!devServerConfirmed) console.log('(All accounts already had verified emails; the development-server check relied on the local address.)')
 }
 

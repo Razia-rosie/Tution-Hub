@@ -6,7 +6,7 @@ All notable changes to TuitionHub. Dates are 2026; commit hashes refer to this r
 
 ### Added
 - Development-only demo-account seed (`scripts/seed-demo.mjs`) and checks
-  (`tests/demo-accounts.mjs`); passwords stay in git-ignored local files ([docs/demo-accounts.md](docs/demo-accounts.md)).
+  (`tests/demo-accounts.mjs`); demo credentials are published in [docs/demo-accounts.md](docs/demo-accounts.md).
 - `make backend-dev` reads local overrides from the git-ignored `backend/.env.local`.
 - Project documentation: README, `docs/` (architecture, setup, API, database, workflows,
   security, testing, deployment, known issues), CONTRIBUTING and SECURITY policies.
