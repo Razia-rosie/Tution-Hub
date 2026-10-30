@@ -64,8 +64,9 @@ export function Field({ label, hint, error, children }: { label: string; hint?: 
 }
 const inputCls = 'min-h-11 w-full rounded-input border border-gray-400 bg-white px-3 py-2.5 text-sm md:min-h-0 text-charcoal-900 placeholder:text-gray-400 hover:border-navy-700 focus:border-blue-600 disabled:bg-gray-100 aria-[invalid=true]:border-danger-600'
 export function Input(p: InputHTMLAttributes<HTMLInputElement>) { return <input {...p} className={cx(inputCls, p.className)} /> }
-export function Select({ options, ...p }: { options: string[] } & React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...p} className={cx(inputCls, p.className)}>{options.map((o) => <option key={o}>{o}</option>)}</select>
+export type SelectOption = string | { value: string; label: string }
+export function Select({ options, ...p }: { options: SelectOption[] } & React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select {...p} className={cx(inputCls, p.className)}>{options.map((o) => typeof o === 'string' ? <option key={o}>{o}</option> : <option key={o.value} value={o.value}>{o.label}</option>)}</select>
 }
 export function Textarea(p: React.TextareaHTMLAttributes<HTMLTextAreaElement>) { return <textarea {...p} className={cx(inputCls, 'min-h-24', p.className)} /> }
 export function PhoneInput({ id, value, onChange }: { id?: string; value: string; onChange: (v: string) => void }) {

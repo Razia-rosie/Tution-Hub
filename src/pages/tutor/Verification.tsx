@@ -1,11 +1,11 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { AlertTriangle, Check, CheckCircle2, Circle, Clock, FileSearch, ShieldAlert, ShieldCheck, Sparkles, Timer, CalendarClock, Mail, Smartphone } from 'lucide-react'
 import { useStore } from '../../lib/store'
 import { Button, Card, Chip, DemoTag, Field, Input, OtpInput, StatusChip, Textarea, VerifyBadge, cx } from '../../components/ui'
 import { DocPlaceholder, Masked, PageHead } from '../../components/tutor/bits'
 import { maskEmail, maskPhone, validEmail, DEMO_OTP_FIRST } from '../../lib/validate'
-import { effectiveStatus, getWorkflowDashboard, submitVerification, updateProfile, uploadVerificationDocument, type WorkflowDashboard } from '../../lib/api'
+import RealVerification from '../../components/RealVerification'
 
 const B = '/app/tutor/verification'
 type Step = { slug: string; id: string; title: string; hint: string; cond?: boolean }
@@ -28,101 +28,11 @@ const COLLECT = ['identity', 'nid', 'phone', 'email', 'education', 'student-id',
 export default function Verification({ sub }: { sub: string }) {
   const parts = sub.split('/').filter(Boolean)
   const [a, b] = parts
-  if (!a) return <RealOverview />
+  if (!a) return <RealVerification role="tutor" />
   if (a === 'status') return <Status />
   if (a === 'skill-test') return b === 'run' ? <SkillRun /> : b === 'result' ? <SkillResult /> : <SkillIntro />
   if (a === 'interview') return <Interview />
   return <Wizard slug={a} />
-}
-
-function RealOverview() {
-  const { user, toast } = useStore()
-  const [dashboard, setDashboard] = useState<WorkflowDashboard | null>(null)
-  const [education, setEducation] = useState('')
-  const [subjects, setSubjects] = useState('')
-  const [classes, setClasses] = useState('')
-  const [areas, setAreas] = useState('')
-  const [file, setFile] = useState<File | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-
-  const load = () => getWorkflowDashboard().then(setDashboard).catch((e) => setError(e instanceof Error ? e.message : 'Could not load verification status.'))
-  useEffect(() => { void load() }, [])
-
-  const saveAndSubmit = async () => {
-    if (!education.trim() || !subjects.trim() || !classes.trim() || !areas.trim()) {
-      setError('Education, subjects, classes, and preferred areas are required.')
-      return
-    }
-    setBusy(true); setError('')
-    try {
-      await updateProfile({
-        display_name: user?.name ?? '',
-        education: education.trim(),
-        subjects: subjects.split(',').map((x) => x.trim()).filter(Boolean),
-        classes: classes.split(',').map((x) => x.trim()).filter(Boolean),
-        areas: areas.split(',').map((x) => x.trim()).filter(Boolean),
-      })
-      const { verification } = await submitVerification()
-      await load()
-      if (file && verification?.id) {
-        try { await uploadVerificationDocument(verification.id, 'identity', file); setFile(null) }
-        catch (e) {
-          // The application already exists at this point; keep it and let the tutor retry the upload alone.
-          setError(`Your application was submitted, but the document upload failed: ${e instanceof Error ? e.message : 'unknown error'} Choose the file again and use "Upload document".`)
-          return
-        }
-      }
-      toast('Your verification application was submitted.', 'success')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not submit verification.')
-    } finally { setBusy(false) }
-  }
-
-  const uploadOnly = async () => {
-    if (!file || !dashboard?.verification) return
-    setBusy(true); setError('')
-    try { await uploadVerificationDocument(dashboard.verification.id, 'identity', file); setFile(null); toast('Document uploaded.', 'success') }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not upload the document.') }
-    finally { setBusy(false) }
-  }
-
-  const status = dashboard ? effectiveStatus(dashboard) : 'not_started'
-  const submitted = !!dashboard?.verification && status !== 'resubmission_required'
-  // Mirrors the backend rule in SaveDocument: documents can change only before review.
-  const canUpload = dashboard?.verification?.status === 'pending' || dashboard?.verification?.status === 'resubmission_required'
-  return (
-    <div className="space-y-6">
-      <PageHead title="Verification Center" tag="TV-01" sub="Submit your real profile for administrator review." actions={<StatusChip state={status} />} />
-      {error && <Card className="border-danger-600 bg-danger-50"><p role="alert" className="text-sm text-danger-700">{error}</p></Card>}
-      <Card>
-        <h2 className="text-lg">Tutor profile and verification</h2>
-        <p className="mt-1 text-sm text-gray-600">These details are saved to your account and reviewed by an administrator. Do not upload documents you are not authorized to share.</p>
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <Field label="Education">{(id) => <Input id={id} value={education} onChange={(e) => setEducation(e.target.value)} placeholder="Degree and institution" />}</Field>
-          <Field label="Subjects">{(id) => <Input id={id} value={subjects} onChange={(e) => setSubjects(e.target.value)} placeholder="Mathematics, Physics" />}</Field>
-          <Field label="Classes">{(id) => <Input id={id} value={classes} onChange={(e) => setClasses(e.target.value)} placeholder="Class 9, SSC" />}</Field>
-          <Field label="Preferred areas">{(id) => <Input id={id} value={areas} onChange={(e) => setAreas(e.target.value)} placeholder="Mirpur, Uttara" />}</Field>
-          <Field label="Identity document image" hint="JPEG, PNG, or WebP; maximum 10 MB">{(id) => <Input id={id} type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />}</Field>
-        </div>
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <Button onClick={() => void saveAndSubmit()} loading={busy} disabled={submitted}>{submitted ? 'Submitted for review' : 'Save and submit for review'}</Button>
-          {submitted && canUpload && <Button variant="secondary" onClick={() => void uploadOnly()} loading={busy} disabled={!file}>Upload document</Button>}
-          {dashboard && <span className="text-sm text-gray-600">Profile completion: {dashboard.account.profile_complete}%</span>}
-        </div>
-      </Card>
-      {dashboard?.verification && (
-        <Card>
-          <h2 className="text-lg">Application status</h2>
-          <dl className="mt-3 space-y-2 text-sm">
-            <div className="flex justify-between gap-4"><dt className="text-gray-600">Status</dt><dd><StatusChip state={dashboard.verification.status} /></dd></div>
-            {dashboard.verification.correction_request && <div><dt className="text-gray-600">Correction request</dt><dd className="mt-1">{dashboard.verification.correction_request}</dd></div>}
-            {dashboard.verification.rejection_reason && <div><dt className="text-gray-600">Reason</dt><dd className="mt-1">{dashboard.verification.rejection_reason}</dd></div>}
-          </dl>
-        </Card>
-      )}
-    </div>
-  )
 }
 
 /* ---------- TV-01 ---------- */

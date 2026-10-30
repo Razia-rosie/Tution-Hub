@@ -97,15 +97,25 @@ func (s *Service) GetDashboard(ctx context.Context, userID string) (map[string]a
 	if err := s.db.GetContext(ctx, &account, `SELECT u.id, u.role, u.account_status, COALESCE(p.completion_percent, 0) AS completion_percent FROM users u LEFT JOIN role_profiles p ON p.user_id = u.id WHERE u.id = ?`, userID); err != nil {
 		return nil, err
 	}
+	// The profile is returned so the verification form can be prefilled on resubmission.
+	// NULL JSON columns cannot scan into json.RawMessage, so they are coalesced to a JSON null literal.
+	var profile any
+	var stored Profile
+	err := s.db.GetContext(ctx, &stored, `SELECT user_id, display_name, institution, education, COALESCE(subjects, 'null') AS subjects, COALESCE(classes, 'null') AS classes, COALESCE(areas, 'null') AS areas, COALESCE(teaching_modes, 'null') AS teaching_modes, COALESCE(availability, 'null') AS availability, experience_years, fee_expectation, address, birth_date, guardian_notes, completion_percent FROM role_profiles WHERE user_id = ?`, userID)
+	if err == nil {
+		profile = stored
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
 	var verification Verification
-	err := s.db.GetContext(ctx, &verification, `SELECT id, user_id, status, submitted_at, reviewed_at, rejection_reason, correction_request FROM verification_applications WHERE user_id = ?`, userID)
+	err = s.db.GetContext(ctx, &verification, `SELECT id, user_id, status, submitted_at, reviewed_at, rejection_reason, correction_request FROM verification_applications WHERE user_id = ?`, userID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return map[string]any{"account": account, "verification": nil}, nil
+		return map[string]any{"account": account, "verification": nil, "profile": profile}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"account": account, "verification": verification}, nil
+	return map[string]any{"account": account, "verification": verification, "profile": profile}, nil
 }
 
 func (s *Service) UpsertProfile(ctx context.Context, userID string, input map[string]any) error {
@@ -404,6 +414,9 @@ func (s *Service) CreateInterview(ctx context.Context, reviewerID, applicationID
 	}
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `INSERT INTO notifications (id, user_id, kind, title, body) VALUES (?, ?, 'interview_scheduled', 'Interview scheduled', 'An administrator scheduled your verification interview.')`, uuid.NewString(), userID)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(ctx, `INSERT INTO audit_logs (id, actor_id, subject_user_id, action, metadata) VALUES (?, ?, ?, 'interview_scheduled', JSON_OBJECT('application_id', ?, 'mode', ?, 'scheduled_at', ?))`, uuid.NewString(), reviewerID, userID, applicationID, mode, scheduledAt)
 	}
 	if err != nil {
 		_ = tx.Rollback()

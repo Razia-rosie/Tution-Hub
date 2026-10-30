@@ -35,7 +35,8 @@ react(),
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
       proxy: {
-        '/api': 'http://localhost:8080',
+        // Override to point the dev server at another API, e.g. an isolated test instance.
+        '/api': process.env.API_PROXY_TARGET || 'http://localhost:8080',
       },
       watch: {
         ignored: [

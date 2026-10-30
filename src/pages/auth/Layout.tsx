@@ -2,11 +2,8 @@ import { type ReactNode } from 'react'
 import { Link, Outlet } from 'react-router'
 import { BadgeCheck, Lock, MapPin, ShieldCheck } from 'lucide-react'
 import { Logo } from '../../components/public/PublicLayout'
-import { DemoTag } from '../../components/ui'
-import { useStore } from '../../lib/store'
 
 export function AuthLayout() {
-  const { setDrawer } = useStore()
   return (
     <div className="flex min-h-screen overflow-x-clip bg-offwhite-50">
       <aside className="relative hidden w-[42%] max-w-[560px] flex-col justify-between bg-navy-900 p-10 text-white lg:flex">
@@ -22,7 +19,6 @@ export function AuthLayout() {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between px-6 py-5">
           <div className="lg:invisible"><Logo /></div>
-          <button onClick={() => setDrawer(true)} className="inline-flex items-center gap-1 text-xs font-semibold text-warning-600 hover:underline"><DemoTag label="Demo" /> Demo controls</button>
         </header>
         <main id="content" className="flex flex-1 items-start justify-center px-6 pb-16 pt-4 sm:items-center">
           <div className="w-full max-w-md"><Outlet /></div>

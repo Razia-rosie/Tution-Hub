@@ -144,3 +144,28 @@ not reset or modify that account. After it succeeds, sign in through the
 existing frontend login and open `/app/admin/verification`. A successful
 database insert alone is not an end-to-end verification of the admin
 workflow.
+
+## End-to-end workflow test
+
+`tests/verification-e2e.mjs` drives the whole verification workflow over HTTP
+(registration, tokens, profile, submission, document upload rules, admin
+review, interviews, role permissions). It creates new accounts with random
+emails and records decisions, so run it against a separate database, never
+your development data:
+
+```sh
+# one-time: create and migrate an isolated database (as MySQL root)
+docker compose exec -T mysql mysql -uroot -proot -e "CREATE DATABASE tuitionhub_e2e; GRANT ALL ON tuitionhub_e2e.* TO 'tuitionhub'@'%';"
+docker compose exec -T mysql mysql -uroot -proot tuitionhub_e2e < migrations/001_auth.sql
+docker compose exec -T mysql mysql -uroot -proot tuitionhub_e2e < migrations/002_workflows.sql
+
+# run a second API on :8090 against it, bootstrap its admin, then:
+E2E_API=http://localhost:8090 E2E_ADMIN_EMAIL=... E2E_ADMIN_PASSWORD=... node ../tests/verification-e2e.mjs
+```
+
+To click through the same database in the browser, start Vite with
+`API_PROXY_TARGET=http://localhost:8090 PORT=5174 pnpm dev`.
+
+The older `tests/*-journey-*.mjs` and `*-sweep-*.mjs` puppeteer scripts predate
+real authentication: they open `/app/...` without signing in and drive the
+removed "Demo controls" drawer, so they no longer run as written.

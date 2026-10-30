@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useNavigate, useParams, Navigate, Link } from 'react-router'
 import { Bell, ShieldCheck, X, MoreHorizontal, LogOut, Monitor } from 'lucide-react'
 import { NAV, ROLES, verifyPath, type Role } from '../lib/nav'
-import { useStore } from '../lib/store'
+import { useStore, type VerifyState } from '../lib/store'
+import { effectiveStatus, getWorkflowDashboard } from '../lib/api'
 import { Avatar, IconButton, Select, StatusChip, cx } from './ui'
 
 const isRole = (r?: string): r is Role => !!r && r in NAV
@@ -19,6 +20,14 @@ export default function AppShell() {
   const s = useStore()
   const [more, setMore] = useState(false)
   const role = isRole(r) ? r : 'tutor'
+  const userRole = s.user?.role
+  // Sync the banner with the server; local verification state is not persisted across reloads.
+  useEffect(() => {
+    if (!userRole || userRole === 'admin') return
+    getWorkflowDashboard().then((d) => s.setVerification(userRole, effectiveStatus(d) as VerifyState)).catch(() => {})
+    // s.setVerification changes identity on every store update; re-run only when the user changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userRole])
   if (s.restoring) return <div role="status" className="flex min-h-screen items-center justify-center bg-offwhite-50 text-sm text-gray-600">Restoring your session…</div>
   if (!s.signedIn || !s.user) return <Navigate to="/login" replace />
   if (role !== s.user.role) return <Navigate to={`/app/${s.user.role}`} replace />
@@ -26,7 +35,7 @@ export default function AppShell() {
   const items = NAV[role]
 
   const vstate = s.verification[role]
-  const needsVerify = role !== 'admin' && vstate !== 'verified'
+  const needsVerify = role !== 'admin' && vstate !== 'verified' && vstate !== 'active'
   const verifyHref = verifyPath(role)
 
   return (
@@ -49,7 +58,7 @@ export default function AppShell() {
         </nav>
         <div className="border-t border-white/10 p-4">
           <p className="text-xs text-navy-200">Signed in as</p>
-          <p className="truncate text-sm font-semibold">{meta.persona}</p>
+          <p className="truncate text-sm font-semibold">{s.user.name}</p>
           <button onClick={() => nav('/logout')} className="mt-2 inline-flex items-center gap-1.5 text-xs text-blue-100 hover:underline"><LogOut size={14} aria-hidden /> Sign out</button>
         </div>
       </aside>
@@ -64,7 +73,7 @@ export default function AppShell() {
                   <Select aria-label="Child switcher" value={cur.short} onChange={(e) => { s.setChild(e.target.value); s.toast(`Showing ${e.target.value}`, 'info') }} options={ck.map((k) => k.short)} className="!w-auto !py-1.5" />
                 </label>) })()}
             <IconButton label="Notifications" onClick={() => nav(`/app/${role}/notifications`)}><Bell size={20} /></IconButton>
-            <Avatar name={meta.persona} size={32} />
+            <Avatar name={s.user.name} size={32} />
           </div>
         </header>
 

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router'
 import { FlaskConical, Menu, ShieldCheck, X } from 'lucide-react'
 import { btnClass, cx, IconButton } from '../ui'
-import { useStore } from '../../lib/store'
 import { GateProvider } from './bits'
 
 export const PUBLIC_NAV = [
@@ -23,7 +22,6 @@ export function Logo({ light = false }: { light?: boolean }) {
 export default function PublicLayout() {
   const [open, setOpen] = useState(false)
   const { pathname } = useLocation()
-  const { setDrawer } = useStore()
   useEffect(() => { setOpen(false); window.scrollTo(0, 0) }, [pathname])
 
   return (
@@ -90,9 +88,6 @@ export default function PublicLayout() {
         </div>
       </footer>
 
-      <button onClick={() => setDrawer(true)} className="fixed bottom-3 left-3 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-dashed border-warning-600 bg-white text-xs font-semibold text-warning-600 shadow-popover hover:bg-warning-100">
-        <FlaskConical size={14} strokeWidth={1.5} aria-hidden /> <span className="sr-only">Demo access</span>
-      </button>
     </div>
   )
 }

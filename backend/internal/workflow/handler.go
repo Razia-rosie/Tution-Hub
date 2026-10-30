@@ -3,6 +3,7 @@ package workflow
 import (
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -40,11 +41,17 @@ func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, service *Serv
 
 func userID(c *gin.Context) string { return c.GetString("user_id") }
 
+// serverError logs the underlying cause, which the client never sees, and aborts with a generic 500.
+func serverError(c *gin.Context, message string, err error) {
+	slog.Error(message, "error", err, "method", c.Request.Method, "path", c.FullPath(), "user_id", userID(c))
+	c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": message})
+}
+
 func dashboard(s *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		result, err := s.GetDashboard(c.Request.Context(), userID(c))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not load dashboard"})
+			serverError(c, "could not load dashboard", err)
 			return
 		}
 		c.JSON(http.StatusOK, result)
@@ -74,7 +81,7 @@ func submitVerification(s *Service) gin.HandlerFunc {
 			return
 		}
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not submit verification"})
+			serverError(c, "could not submit verification", err)
 			return
 		}
 		c.JSON(http.StatusAccepted, gin.H{"verification": verification})
@@ -119,7 +126,7 @@ func uploadDocument(s *Service) gin.HandlerFunc {
 			c.JSON(http.StatusConflict, gin.H{"error": "documents cannot be changed after the application has been reviewed"})
 			return
 		} else if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save document"})
+			serverError(c, "could not save document", err)
 			return
 		}
 		c.Status(http.StatusCreated)
@@ -134,7 +141,7 @@ func document(s *Service, authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not load document"})
+			serverError(c, "could not load document", err)
 			return
 		}
 		user, userErr := authService.User(c.Request.Context(), userID(c))
@@ -157,7 +164,7 @@ func notifications(s *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		items, err := s.Notifications(c.Request.Context(), userID(c))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not load notifications"})
+			serverError(c, "could not load notifications", err)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"notifications": items})
@@ -168,7 +175,7 @@ func relationships(s *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		items, err := s.Relationships(c.Request.Context(), userID(c))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not load relationships"})
+			serverError(c, "could not load relationships", err)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"relationships": items})
@@ -200,7 +207,7 @@ func tuition(s *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		items, err := s.ListTuition(c.Request.Context(), c.Query("subject"), c.Query("class"), c.Query("area"))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not load tuition listings"})
+			serverError(c, "could not load tuition listings", err)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"listings": items})
@@ -222,7 +229,7 @@ func requireActive(service *Service, next gin.HandlerFunc) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var status string
 		if err := service.db.GetContext(c.Request.Context(), &status, `SELECT account_status FROM users WHERE id = ?`, userID(c)); err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "could not check account status"})
+			serverError(c, "could not check account status", err)
 			return
 		}
 		if status != "active" {
@@ -237,7 +244,7 @@ func listVerifications(s *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		items, err := s.ListVerifications(c.Request.Context(), c.Query("status"), c.Query("role"))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not load verification requests"})
+			serverError(c, "could not load verification requests", err)
 			return
 		}
 
@@ -265,7 +272,7 @@ func interviewOutcome(s *Service) gin.HandlerFunc {
 			c.JSON(http.StatusConflict, gin.H{"error": "interview cannot transition from its current state"})
 			return
 		} else if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save interview outcome"})
+			serverError(c, "could not save interview outcome", err)
 			return
 		}
 		c.Status(http.StatusNoContent)
@@ -276,7 +283,7 @@ func listDocuments(s *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		documents, err := s.ListDocuments(c.Request.Context(), c.Param("id"))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not load document metadata"})
+			serverError(c, "could not load document metadata", err)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"documents": documents})
@@ -303,7 +310,7 @@ func reviewVerification(s *Service) gin.HandlerFunc {
 			c.JSON(http.StatusConflict, gin.H{"error": "this application has already been decided"})
 			return
 		} else if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save review decision"})
+			serverError(c, "could not save review decision", err)
 			return
 		}
 		c.Status(http.StatusNoContent)
@@ -335,7 +342,7 @@ func scheduleInterview(s *Service) gin.HandlerFunc {
 			c.JSON(http.StatusConflict, gin.H{"error": "interviews can only be scheduled for applications awaiting review"})
 			return
 		} else if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not schedule interview"})
+			serverError(c, "could not schedule interview", err)
 			return
 		}
 		c.Status(http.StatusCreated)

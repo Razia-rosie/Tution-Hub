@@ -8,7 +8,7 @@ import { StrengthMeter } from './Signup'
 import { useStore, type VerifyState } from '../../lib/store'
 import { maskEmail, strength, validEmail } from '../../lib/validate'
 import { verifyPath, ROLES, type Role } from '../../lib/nav'
-import { effectiveStatus, getWorkflowDashboard, loginAccount, logoutAccount } from '../../lib/api'
+import { effectiveStatus, getWorkflowDashboard, loginAccount, logoutAccount, revokeRefreshToken } from '../../lib/api'
 
 export function Forgot() {
   const nav = useNavigate(); const [email, setEmail] = useState(''); const [touched, setTouched] = useState(false); const [busy, setBusy] = useState(false)
@@ -114,12 +114,13 @@ export function Logout() {
           setBusy(true)
           try {
             await logoutAccount()
-            signOut()
             toast('Signed out', 'success')
-            setDone(true)
           } catch {
-            toast('We could not end the server session. Please try again.', 'danger')
+            // logoutAccount already cleared the stored tokens; the refresh token expires on its own.
+            toast('Signed out on this device. The server session could not be ended and will expire on its own.', 'warning')
           } finally {
+            signOut()
+            setDone(true)
             setBusy(false)
           }
         }}>Log out</Button>
@@ -179,7 +180,6 @@ export function Gate() {
         <Button className="w-full" onClick={() => nav(verified ? `/app/${role}` : verifyPath(role))}>{g.cta} <ArrowRight size={14} aria-hidden /></Button>
         {!verified && <Button variant="secondary" className="w-full" onClick={() => nav(`/app/${role}`)}>Explore limited dashboard</Button>}
       </div>
-      <p className="mt-4 text-center text-xs text-gray-600">Change this status in Demo controls to preview each route.</p>
     </AuthCard>
   )
 }
@@ -197,8 +197,12 @@ export function AdminLogin() {
         setBusy(true)
         try {
           const { user, tokens } = await loginAccount(email.trim(), pw)
-          if (user.role !== 'admin') throw new Error('This account is not authorized for administrator access.')
-          setSession(tokens.access_token, tokens.refresh_token); setAuthenticatedUser(user); toast('Administrator session started.', 'success'); nav('/app/admin')
+          if (user.role !== 'admin') {
+            // Login already issued a session for this non-admin account; revoke it rather than leave it orphaned.
+            await revokeRefreshToken(tokens.refresh_token).catch(() => {})
+            throw new Error('This account is not authorized for administrator access.')
+          }
+          setSession(tokens.access_token, tokens.refresh_token); setAuthenticatedUser(user); toast('Administrator session started.', 'success'); nav('/app/admin/verification')
         } catch (error) {
           setBad(error instanceof Error ? error.message : 'Administrator sign-in failed.')
         } finally { setBusy(false) }

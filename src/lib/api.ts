@@ -97,6 +97,10 @@ async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Re
   return send()
 }
 
+export function revokeRefreshToken(refreshToken: string) {
+  return request<void>('/api/v1/auth/logout', { method: 'POST', body: JSON.stringify({ refresh_token: refreshToken }) })
+}
+
 export async function logoutAccount() {
   const tokens = getStoredTokens()
   if (!tokens) return
@@ -110,10 +114,21 @@ export async function logoutAccount() {
   }
 }
 
+export type WorkflowProfile = {
+  display_name?: string | null
+  institution?: string | null
+  education?: string | null
+  subjects?: string[] | null
+  classes?: string[] | null
+  areas?: string[] | null
+  completion_percent: number
+}
+
 export type WorkflowDashboard = {
-    account: { id: string; role: ApiUser['role']; status: string; profile_complete: number }
-    verification?: { id: string; user_id: string; status: string; submitted_at?: string | null; reviewed_at?: string | null; rejection_reason?: string | null; correction_request?: string | null }
-  }
+  account: { id: string; role: ApiUser['role']; status: string; profile_complete: number }
+  verification?: { id: string; user_id: string; status: string; submitted_at?: string | null; reviewed_at?: string | null; rejection_reason?: string | null; correction_request?: string | null } | null
+  profile?: WorkflowProfile | null
+}
 
 async function authenticatedRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await authorizedFetch(path, { ...init, headers: { 'Content-Type': 'application/json', ...(init.headers ?? {}) } })

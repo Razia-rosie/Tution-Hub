@@ -6,6 +6,7 @@ import { DEMO_OTP_FIRST, DEMO_OTP_RESENT, maskEmail, maskPhone, normalizePhone, 
 import { AREAS, LEVELS, OWNER_ROLES, ORG, ORG_TYPES, REG_TYPES, STUDENT_BANDS, SUBJECT_LIST, type CForm } from '../../lib/coaching'
 import { Button, Card, Chip, DemoTag, Field, Input, OtpInput, PhoneInput, Select, StatusChip, VerifyBadge, btnClass, cx } from '../../components/ui'
 import { DocPlaceholder, Masked, PageHead } from '../../components/tutor/bits'
+import RealVerification from '../../components/RealVerification'
 
 export const B = '/app/coaching/verification'
 const STEPS = [
@@ -20,7 +21,7 @@ const href = (p: string) => (p ? `${B}/${p}` : B)
 
 export default function Verification({ sub }: { sub: string }) {
   const a = sub.split('/').filter(Boolean)[0]
-  if (!a) return <Step slug="register" />
+  if (!a) return <RealVerification role="coaching" />
   if (a === 'status') return <Status />
   if (a === 'submit') return <Submit />
   return <Step slug={a} />
