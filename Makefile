@@ -55,11 +55,14 @@ up:
 	@echo "  API:      http://localhost:8080"
 	@echo "  Logs:     $(FRONTEND_LOG), $(API_LOG)"
 
+# The recorded pid is a make process; the API (air and its server binary) and
+# Vite run as its descendants, so the whole process tree is stopped.
 down:
-	@for pid_file in "$(API_PID_FILE)" "$(FRONTEND_PID_FILE)"; do \
+	@killtree() { for child in $$(pgrep -P "$$1"); do killtree "$$child"; done; kill "$$1" 2>/dev/null || true; }; \
+	for pid_file in "$(API_PID_FILE)" "$(FRONTEND_PID_FILE)"; do \
 		if test -f "$$pid_file"; then \
 			pid=$$(cat "$$pid_file"); \
-			if kill -0 "$$pid" 2>/dev/null; then kill "$$pid"; fi; \
+			if kill -0 "$$pid" 2>/dev/null; then killtree "$$pid"; fi; \
 			rm -f "$$pid_file"; \
 		fi; \
 	done

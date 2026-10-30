@@ -39,6 +39,10 @@ make up
 
 ## Environment variables
 
+`make up` uses the local Docker defaults. To override them (for example after changing the MySQL
+password), put `DATABASE_URL=...` or `JWT_SECRET=...` in `backend/.env.local`; it is git-ignored and
+read by `make backend-dev`.
+
 `backend/.env.example` documents every variable. `make backend-dev` sets development values
 inline; when running the API another way, copy the template and export it in your shell (the API
 does not read `.env` files itself).

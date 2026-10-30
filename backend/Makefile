@@ -6,8 +6,11 @@ SHELL := /bin/sh
 # without registering it with the standalone Docker CLI.
 COMPOSE := $(shell if command -v docker-compose >/dev/null 2>&1; then echo docker-compose; elif docker compose version >/dev/null 2>&1; then echo docker compose; elif [ -x /Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose ]; then echo /Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose; else echo docker compose; fi)
 
+# Local overrides (for example a changed database password) go in the
+# git-ignored .env.local; the values below are the Docker Compose defaults.
 dev:
-	APP_ENV=development HTTP_ADDR=:8080 DATABASE_URL='tuitionhub:tuitionhub@tcp(127.0.0.1:3306)/tuitionhub?parseTime=true&charset=utf8mb4&loc=UTC' JWT_SECRET='replace-this-with-a-long-random-secret-at-least-32-characters' ACCESS_TOKEN_TTL=15m REFRESH_TOKEN_TTL=720h COOKIE_SECURE=false go run github.com/air-verse/air@v1.61.7 -c .air.toml
+	set -a; if [ -f .env.local ]; then . ./.env.local; fi; set +a; \
+	APP_ENV=development HTTP_ADDR=:8080 DATABASE_URL="$${DATABASE_URL:-tuitionhub:tuitionhub@tcp(127.0.0.1:3306)/tuitionhub?parseTime=true&charset=utf8mb4&loc=UTC}" JWT_SECRET="$${JWT_SECRET:-replace-this-with-a-long-random-secret-at-least-32-characters}" ACCESS_TOKEN_TTL=15m REFRESH_TOKEN_TTL=720h COOKIE_SECURE=false go run github.com/air-verse/air@v1.61.7 -c .air.toml
 
 build:
 	go build ./...
