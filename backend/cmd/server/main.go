@@ -65,6 +65,12 @@ func newRouter(service *auth.Service, cfg config.Config) *gin.Engine {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
+	// Without this gin trusts X-Forwarded-For from any peer, letting clients spoof
+	// their address and dodge the per-IP rate limits.
+	if err := r.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+		slog.Error("invalid TRUSTED_PROXIES", "error", err)
+		os.Exit(1)
+	}
 	r.Use(gin.Logger(), gin.Recovery())
 	r.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 

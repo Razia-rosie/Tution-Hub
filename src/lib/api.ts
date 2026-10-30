@@ -4,6 +4,7 @@ export type ApiUser = {
   email: string
   phone?: string | null
   role: 'tutor' | 'student' | 'parent' | 'coaching' | 'admin'
+  account_status?: string
   email_verified_at?: string | null
   created_at: string
 }
@@ -19,14 +20,29 @@ type AuthResponse = { user: ApiUser; tokens: Tokens }
 const ACCESS_TOKEN_KEY = 'tuitionhub.access_token'
 const REFRESH_TOKEN_KEY = 'tuitionhub.refresh_token'
 
+/** An API failure with the HTTP status and any extra fields the server sent (e.g. `missing`). */
+export class ApiError extends Error {
+  status: number
+  details: Record<string, unknown>
+  constructor(status: number, body: Record<string, unknown>) {
+    super(typeof body.error === 'string' ? body.error : status === 429 ? 'Too many attempts. Please wait and try again.' : 'The request could not be completed.')
+    this.status = status
+    this.details = body
+  }
+}
+
+async function parse<T>(response: Response): Promise<T> {
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>
+  if (!response.ok) throw new ApiError(response.status, body)
+  return body as T
+}
+
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init.headers ?? {}) },
   })
-  const body = (await response.json().catch(() => ({}))) as { error?: string }
-  if (!response.ok) throw new Error(body.error ?? 'The request could not be completed.')
-  return body as T
+  return parse<T>(response)
 }
 
 export function registerAccount(input: { name: string; email: string; password: string; role: ApiUser['role'] }) {
@@ -93,6 +109,15 @@ async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Re
     return fetch(path, { ...init, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${tokens.access_token}` } })
   }
   const response = await send()
+  if (response.status === 403) {
+    // A suspended account is blocked on every request; end the local session instead of showing broken screens.
+    const body = (await response.clone().json().catch(() => ({}))) as { error?: string }
+    if (body.error?.includes('suspended')) {
+      clearTokens()
+      window.location.assign('/login')
+    }
+    return response
+  }
   if (response.status !== 401 || !(await refreshSession())) return response
   return send()
 }
@@ -124,23 +149,28 @@ export type WorkflowProfile = {
   completion_percent: number
 }
 
+export type VerificationDocument = { id: string; application_id: string; document_type: string; original_name: string; mime_type: string; byte_size: number; uploaded_at: string }
+export type DocumentRequirement = { type: string; label: string; required: boolean }
+
 export type WorkflowDashboard = {
-  account: { id: string; role: ApiUser['role']; status: string; profile_complete: number }
+  account: { id: string; name: string; role: ApiUser['role']; status: string; profile_complete: number }
+  documents?: VerificationDocument[]
+  requirements?: DocumentRequirement[] | null
   verification?: { id: string; user_id: string; status: string; submitted_at?: string | null; reviewed_at?: string | null; rejection_reason?: string | null; correction_request?: string | null } | null
   profile?: WorkflowProfile | null
 }
 
 async function authenticatedRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await authorizedFetch(path, { ...init, headers: { 'Content-Type': 'application/json', ...(init.headers ?? {}) } })
-  const body = (await response.json().catch(() => ({}))) as { error?: string }
-  if (!response.ok) throw new Error(body.error ?? 'The request could not be completed.')
-  return body as T
+  return parse<T>(response)
 }
 
 // The account status tracks the whole lifecycle; the application status only
 // covers the review step. Before anything is submitted, report not_started.
 export function effectiveStatus(dashboard: WorkflowDashboard): string {
   const account = dashboard.account.status
+  // Only tutors and coaching centres are verified; other roles are usable unless suspended.
+  if (dashboard.account.role !== 'tutor' && dashboard.account.role !== 'coaching') return account === 'suspended' ? 'suspended' : 'active'
   if (!dashboard.verification) return account === 'active' || account === 'suspended' ? account : 'not_started'
   if (account === 'pending') return dashboard.verification.status
   return account
@@ -158,19 +188,24 @@ export function submitVerification() {
     return authenticatedRequest<{ verification: WorkflowDashboard['verification'] }>('/api/v1/workflow/verification/submit', { method: 'POST' })
   }
 
-export async function uploadVerificationDocument(applicationId: string, documentType: string, file: File) {
-    const body = new FormData()
-    body.append('application_id', applicationId)
-    body.append('document_type', documentType)
-    body.append('document', file)
-    const response = await authorizedFetch('/api/v1/workflow/verification/documents', { method: 'POST', body })
-    const result = (await response.json().catch(() => ({}))) as { error?: string }
-    if (!response.ok) throw new Error(result.error ?? 'The document could not be uploaded.')
-  }
+/** Uploads one verification picture. The server creates a draft application on the first upload. */
+export async function uploadVerificationDocument(documentType: string, file: File) {
+  const body = new FormData()
+  body.append('document_type', documentType)
+  body.append('document', file)
+  const response = await authorizedFetch('/api/v1/workflow/verification/documents', { method: 'POST', body })
+  return parse<{ document: VerificationDocument }>(response)
+}
+
+export type AppNotification = { id: string; kind: string; title: string; body: string; read_at?: string | null; created_at: string }
 
 export function getNotifications() {
-    return authenticatedRequest<{ notifications: Array<{ id: string; title: string; body: string; read_at?: string | null; created_at: string }> }>('/api/v1/workflow/notifications')
-  }
+  return authenticatedRequest<{ notifications: AppNotification[] | null }>('/api/v1/workflow/notifications')
+}
+
+export function markNotificationsRead(id?: string) {
+  return authenticatedRequest<void>('/api/v1/workflow/notifications/read', { method: 'POST', body: JSON.stringify(id ? { id } : {}) })
+}
 
 export function getTuitionListings(filters: { subject?: string; class?: string; area?: string } = {}) {
     const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value))
@@ -190,6 +225,8 @@ export type AdminApplication = {
   role: string
   account_status: string
   profile: Record<string, unknown>
+  submission_count: number
+  document_count: number
   interviews: Array<{ id: string; mode: string; scheduled_at: string; location_or_link?: string | null; status: string; notes?: string | null }>
 }
 
@@ -218,4 +255,32 @@ export async function fetchPrivateDocument(documentId: string) {
   const response = await authorizedFetch(`/api/v1/workflow/verification/documents/${documentId}`)
   if (!response.ok) throw new Error('The document could not be retrieved.')
   return URL.createObjectURL(await response.blob())
+}
+
+export type AuditEntry = { id: string; action: string; metadata: Record<string, unknown>; created_at: string; actor_id?: string | null; actor_name?: string | null; actor_role?: string | null; subject_id?: string | null; subject_name?: string | null }
+
+export function getApplicationHistory(applicationId: string) {
+  return authenticatedRequest<{ history: AuditEntry[] }>(`/api/v1/workflow/admin/verifications/${applicationId}/history`)
+}
+
+export type AdminStats = { users_by_role: Record<string, number>; users_by_status: Record<string, number>; applications_by_status: Record<string, number>; oldest_pending_at?: string | null; signups_last_7_days: number; decisions_last_7_days: number }
+
+export function getAdminStats() {
+  return authenticatedRequest<AdminStats>('/api/v1/workflow/admin/stats')
+}
+
+export type AdminUser = { id: string; name: string; email: string; phone?: string | null; role: ApiUser['role']; account_status: string; email_verified_at?: string | null; created_at: string; verification_status?: string | null }
+
+export function getAdminUsers(filters: { role?: string; status?: string; q?: string; limit?: number; offset?: number }) {
+  const query = new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)]))
+  return authenticatedRequest<{ users: AdminUser[]; total: number }>(`/api/v1/workflow/admin/users?${query}`)
+}
+
+export function setUserSuspended(userId: string, suspend: boolean, reason = '') {
+  return authenticatedRequest<void>(`/api/v1/workflow/admin/users/${userId}/${suspend ? 'suspend' : 'reactivate'}`, { method: 'POST', body: JSON.stringify({ reason }) })
+}
+
+export function getAuditLog(filters: { action?: string; limit?: number; offset?: number } = {}) {
+  const query = new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)]))
+  return authenticatedRequest<{ entries: AuditEntry[] }>(`/api/v1/workflow/admin/audit-logs?${query}`)
 }

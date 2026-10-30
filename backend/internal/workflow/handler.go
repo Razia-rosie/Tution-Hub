@@ -15,8 +15,6 @@ import (
 	"github.com/tuitionhub/backend/internal/auth"
 )
 
-const maxDocumentBytes = 10 << 20
-
 func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, service *Service) {
 	api := r.Group("/workflow")
 	api.Use(auth.RequireAuth(authService))
@@ -26,17 +24,24 @@ func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, service *Serv
 	api.POST("/verification/documents", uploadDocument(service))
 	api.GET("/verification/documents/:id", document(service, authService))
 	api.GET("/notifications", notifications(service))
+	api.POST("/notifications/read", markNotificationsRead(service))
 	api.GET("/relationships", relationships(service))
 	api.POST("/relationships", createRelationship(service))
 	api.GET("/tuition", requireActive(service, tuition(service)))
 
 	admin := api.Group("/admin")
-	admin.Use(requireAdmin(authService))
+	admin.Use(requireAdmin())
 	admin.GET("/verifications", listVerifications(service))
 	admin.GET("/verifications/:id/documents", listDocuments(service))
 	admin.POST("/verifications/:id/decision", reviewVerification(service))
 	admin.POST("/verifications/:id/interviews", scheduleInterview(service))
 	admin.POST("/verifications/:id/interviews/:interviewID/outcome", interviewOutcome(service))
+	admin.GET("/verifications/:id/history", applicationHistory(service))
+	admin.GET("/stats", adminStats(service))
+	admin.GET("/users", adminUsers(service))
+	admin.POST("/users/:id/suspend", setSuspended(service, true))
+	admin.POST("/users/:id/reactivate", setSuspended(service, false))
+	admin.GET("/audit-logs", auditLogs(service))
 }
 
 func userID(c *gin.Context) string { return c.GetString("user_id") }
@@ -65,7 +70,10 @@ func profile(s *Service) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid profile data"})
 			return
 		}
-		if err := s.UpsertProfile(c.Request.Context(), userID(c), input); err != nil {
+		if err := s.UpsertProfile(c.Request.Context(), userID(c), input); errors.Is(err, ErrConflict) {
+			c.JSON(http.StatusConflict, gin.H{"error": "your profile is locked while your verification is under review"})
+			return
+		} else if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "could not save profile"})
 			return
 		}
@@ -76,6 +84,15 @@ func profile(s *Service) gin.HandlerFunc {
 func submitVerification(s *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		verification, err := s.SubmitVerification(c.Request.Context(), userID(c))
+		var incomplete *IncompleteError
+		if errors.As(err, &incomplete) {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "please complete your application before submitting", "missing": incomplete.Missing})
+			return
+		}
+		if errors.Is(err, ErrForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only tutors and coaching centres go through verification"})
+			return
+		}
 		if errors.Is(err, ErrInvalidState) {
 			c.JSON(http.StatusConflict, gin.H{"error": "verification cannot be submitted in the current account state"})
 			return
@@ -94,14 +111,13 @@ func uploadDocument(s *Service) gin.HandlerFunc {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxDocumentBytes+1<<20)
 		applicationID := strings.TrimSpace(c.PostForm("application_id"))
 		documentType := strings.TrimSpace(c.PostForm("document_type"))
-		if applicationID == "" || documentType == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "application_id and document_type are required"})
+		if documentType == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "document_type is required"})
 			return
 		}
-
 		file, header, err := c.Request.FormFile("document")
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "an image document is required"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "an image file of 10 MB or less is required"})
 			return
 		}
 		defer file.Close()
@@ -115,21 +131,21 @@ func uploadDocument(s *Service) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "could not read document"})
 			return
 		}
-		mime := http.DetectContentType(content)
-		if err := s.SaveDocument(c.Request.Context(), userID(c), applicationID, documentType, header.Filename, mime, header.Size, content); errors.Is(err, ErrInvalidState) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "only JPEG, PNG, or WebP images are accepted"})
-			return
-		} else if errors.Is(err, ErrForbidden) {
+		doc, err := s.SaveDocument(c.Request.Context(), userID(c), applicationID, documentType, header.Filename, content)
+		switch {
+		case errors.Is(err, ErrInvalidImage):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "only real JPEG, PNG or WebP pictures are accepted"})
+		case errors.Is(err, ErrInvalidState):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "this document type is not accepted for your account"})
+		case errors.Is(err, ErrForbidden):
 			c.JSON(http.StatusForbidden, gin.H{"error": "you cannot upload to this verification request"})
-			return
-		} else if errors.Is(err, ErrConflict) {
-			c.JSON(http.StatusConflict, gin.H{"error": "documents cannot be changed after the application has been reviewed"})
-			return
-		} else if err != nil {
+		case errors.Is(err, ErrConflict):
+			c.JSON(http.StatusConflict, gin.H{"error": "pictures cannot be changed while the application is under review or after a decision"})
+		case err != nil:
 			serverError(c, "could not save document", err)
-			return
+		default:
+			c.JSON(http.StatusCreated, gin.H{"document": doc})
 		}
-		c.Status(http.StatusCreated)
 	}
 }
 
@@ -137,23 +153,30 @@ func document(s *Service, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		stored, err := s.GetDocument(c.Request.Context(), c.Param("id"))
 		if errors.Is(err, ErrNotFound) {
-			c.Status(http.StatusNotFound)
+			c.JSON(http.StatusNotFound, gin.H{"error": "document not found"})
 			return
 		}
 		if err != nil {
 			serverError(c, "could not load document", err)
 			return
 		}
-		user, userErr := authService.User(c.Request.Context(), userID(c))
-		if userErr != nil || (user.ID != stored.OwnerID && user.Role != "admin") {
-			c.JSON(http.StatusForbidden, gin.H{"error": "you are not authorized to view this document"})
+		if userID(c) != stored.OwnerID && c.GetString("role") != "admin" {
+			// 404 rather than 403 so document IDs cannot be probed for existence.
+			c.JSON(http.StatusNotFound, gin.H{"error": "document not found"})
 			return
 		}
 		path := s.DocumentPath(stored.StorageKey)
 		if _, err := os.Stat(path); err != nil {
-			c.Status(http.StatusNotFound)
+			c.JSON(http.StatusNotFound, gin.H{"error": "document not found"})
 			return
 		}
+		if c.GetString("role") == "admin" && userID(c) != stored.OwnerID {
+			s.Audit(c.Request.Context(), userID(c), stored.OwnerID, "document_viewed", map[string]any{"document_id": stored.ID, "document_type": stored.DocumentType})
+		}
+		// Identity pictures: never cache, never sniff, never run anything embedded.
+		c.Header("Cache-Control", "private, no-store")
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("Content-Security-Policy", "default-src 'none'; img-src 'self'; sandbox")
 		c.Header("Content-Type", stored.MimeType)
 		c.Header("Content-Disposition", "inline; filename="+strconv.Quote(stored.OriginalName))
 		c.File(path)
@@ -214,10 +237,10 @@ func tuition(s *Service) gin.HandlerFunc {
 	}
 }
 
-func requireAdmin(authService *auth.Service) gin.HandlerFunc {
+// requireAdmin relies on the role RequireAuth loaded from the database for this request.
+func requireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		user, err := authService.User(c.Request.Context(), userID(c))
-		if err != nil || user.Role != "admin" {
+		if c.GetString("role") != "admin" {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "administrator access required"})
 			return
 		}
@@ -346,5 +369,97 @@ func scheduleInterview(s *Service) gin.HandlerFunc {
 			return
 		}
 		c.Status(http.StatusCreated)
+	}
+}
+
+func markNotificationsRead(s *Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			ID string `json:"id"`
+		}
+		_ = c.ShouldBindJSON(&req)
+		if err := s.MarkNotificationsRead(c.Request.Context(), userID(c), req.ID); errors.Is(err, ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "notification not found"})
+		} else if err != nil {
+			serverError(c, "could not update notifications", err)
+		} else {
+			c.Status(http.StatusNoContent)
+		}
+	}
+}
+
+func applicationHistory(s *Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		entries, err := s.ApplicationHistory(c.Request.Context(), c.Param("id"))
+		if errors.Is(err, ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "verification request not found"})
+			return
+		}
+		if err != nil {
+			serverError(c, "could not load application history", err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"history": entries})
+	}
+}
+
+func adminStats(s *Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		stats, err := s.Stats(c.Request.Context())
+		if err != nil {
+			serverError(c, "could not load statistics", err)
+			return
+		}
+		c.JSON(http.StatusOK, stats)
+	}
+}
+
+func adminUsers(s *Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		limit, _ := strconv.Atoi(c.Query("limit"))
+		offset, _ := strconv.Atoi(c.Query("offset"))
+		users, total, err := s.ListUsers(c.Request.Context(), UserFilter{Role: c.Query("role"), Status: c.Query("status"), Query: c.Query("q"), Limit: limit, Offset: offset})
+		if err != nil {
+			serverError(c, "could not load users", err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
+	}
+}
+
+func setSuspended(s *Service, suspend bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Reason string `json:"reason"`
+		}
+		_ = c.ShouldBindJSON(&req)
+		err := s.SetSuspended(c.Request.Context(), userID(c), c.Param("id"), suspend, req.Reason)
+		switch {
+		case errors.Is(err, ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		case errors.Is(err, ErrForbidden):
+			c.JSON(http.StatusForbidden, gin.H{"error": "administrators cannot be suspended here"})
+		case errors.Is(err, ErrInvalidState):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "a reason of at least ten characters is required"})
+		case errors.Is(err, ErrConflict):
+			c.JSON(http.StatusConflict, gin.H{"error": "the account is already in that state"})
+		case err != nil:
+			serverError(c, "could not update account", err)
+		default:
+			c.Status(http.StatusNoContent)
+		}
+	}
+}
+
+func auditLogs(s *Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		limit, _ := strconv.Atoi(c.Query("limit"))
+		offset, _ := strconv.Atoi(c.Query("offset"))
+		entries, err := s.AuditLog(c.Request.Context(), c.Query("action"), limit, offset)
+		if err != nil {
+			serverError(c, "could not load audit log", err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"entries": entries})
 	}
 }

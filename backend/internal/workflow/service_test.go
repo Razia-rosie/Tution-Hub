@@ -10,6 +10,19 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+func TestSubmitVerificationRefusesNonVerifiableRole(t *testing.T) {
+	service, mock, closeDB := testWorkflowService(t)
+	defer closeDB()
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT role, account_status FROM users WHERE id = ? FOR UPDATE")).
+		WithArgs("user").
+		WillReturnRows(sqlmock.NewRows([]string{"role", "account_status"}).AddRow("student", "active"))
+	mock.ExpectRollback()
+	if _, err := service.SubmitVerification(context.Background(), "user"); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+}
+
 func TestSupportedImageTypes(t *testing.T) {
 	for _, mimeType := range []string{"image/jpeg", "image/png", "image/webp"} {
 		if !isSupportedImage(mimeType) {
@@ -95,9 +108,9 @@ func TestSubmitVerificationRefusesApprovedAccount(t *testing.T) {
 	service, mock, closeDB := testWorkflowService(t)
 	defer closeDB()
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT account_status FROM users WHERE id = ? FOR UPDATE")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT role, account_status FROM users WHERE id = ? FOR UPDATE")).
 		WithArgs("user").
-		WillReturnRows(sqlmock.NewRows([]string{"account_status"}).AddRow("profile_incomplete"))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "account_status"}).AddRow("tutor", "active"))
 	mock.ExpectRollback()
 	if _, err := service.SubmitVerification(context.Background(), "user"); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("expected ErrInvalidState, got %v", err)

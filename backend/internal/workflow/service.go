@@ -85,16 +85,20 @@ type AdminApplication struct {
 	AccountStatus string          `db:"account_status" json:"account_status"`
 	Profile       json.RawMessage `db:"profile" json:"profile"`
 	Interviews    json.RawMessage `db:"interviews" json:"interviews"`
+	// SubmissionCount > 1 marks a resubmitted application.
+	SubmissionCount int `db:"submission_count" json:"submission_count"`
+	DocumentCount   int `db:"document_count" json:"document_count"`
 }
 
 func (s *Service) GetDashboard(ctx context.Context, userID string) (map[string]any, error) {
 	var account struct {
+		Name            string `db:"name" json:"name"`
 		ID              string `db:"id" json:"id"`
 		Role            string `db:"role" json:"role"`
 		Status          string `db:"account_status" json:"status"`
 		ProfileComplete uint8  `db:"completion_percent" json:"profile_complete"`
 	}
-	if err := s.db.GetContext(ctx, &account, `SELECT u.id, u.role, u.account_status, COALESCE(p.completion_percent, 0) AS completion_percent FROM users u LEFT JOIN role_profiles p ON p.user_id = u.id WHERE u.id = ?`, userID); err != nil {
+	if err := s.db.GetContext(ctx, &account, `SELECT u.id, u.name, u.role, u.account_status, COALESCE(p.completion_percent, 0) AS completion_percent FROM users u LEFT JOIN role_profiles p ON p.user_id = u.id WHERE u.id = ?`, userID); err != nil {
 		return nil, err
 	}
 	// The profile is returned so the verification form can be prefilled on resubmission.
@@ -109,16 +113,34 @@ func (s *Service) GetDashboard(ctx context.Context, userID string) (map[string]a
 	}
 	var verification Verification
 	err = s.db.GetContext(ctx, &verification, `SELECT id, user_id, status, submitted_at, reviewed_at, rejection_reason, correction_request FROM verification_applications WHERE user_id = ?`, userID)
+	result := map[string]any{"account": account, "verification": nil, "profile": profile, "documents": []Document{}, "requirements": RequirementsFor(account.Role)}
 	if errors.Is(err, sql.ErrNoRows) {
-		return map[string]any{"account": account, "verification": nil, "profile": profile}, nil
+		return result, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"account": account, "verification": verification, "profile": profile}, nil
+	result["verification"] = verification
+	documents, err := s.ListDocuments(ctx, verification.ID)
+	if err != nil {
+		return nil, err
+	}
+	result["documents"] = documents
+	return result, nil
 }
 
 func (s *Service) UpsertProfile(ctx context.Context, userID string, input map[string]any) error {
+	var lock struct {
+		Role   string         `db:"role"`
+		Status sql.NullString `db:"status"`
+	}
+	if err := s.db.GetContext(ctx, &lock, `SELECT u.role, v.status FROM users u LEFT JOIN verification_applications v ON v.user_id = u.id WHERE u.id = ?`, userID); err != nil {
+		return err
+	}
+	// The reviewer must see exactly what was submitted, so verification profiles freeze while in review.
+	if verifiableRole(lock.Role) && (lock.Status.String == "pending" || lock.Status.String == "under_review") {
+		return ErrConflict
+	}
 	allowed := map[string]bool{"display_name": true, "institution": true, "education": true, "subjects": true, "classes": true, "areas": true, "teaching_modes": true, "availability": true, "experience_years": true, "fee_expectation": true, "address": true, "birth_date": true, "guardian_notes": true}
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -160,44 +182,85 @@ func (s *Service) UpsertProfile(ctx context.Context, userID string, input map[st
 	return tx.Commit()
 }
 
+// IncompleteError lists what must be provided before an application can be submitted.
+type IncompleteError struct{ Missing []string }
+
+func (e *IncompleteError) Error() string { return "verification application is incomplete" }
+
+// editableApplication reports whether the applicant may still change pictures
+// and profile details: before the first submission and when corrections are
+// requested. From submission onwards the evidence is frozen for the reviewer.
+func editableApplication(status string) bool {
+	return status == "" || status == "draft" || status == "resubmission_required"
+}
+
 func (s *Service) SubmitVerification(ctx context.Context, userID string) (Verification, error) {
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return Verification{}, err
 	}
-	id := uuid.NewString()
-	var status string
-	if err = tx.GetContext(ctx, &status, `SELECT account_status FROM users WHERE id = ? FOR UPDATE`, userID); err != nil {
-		_ = tx.Rollback()
+	defer tx.Rollback()
+	var account struct {
+		Role   string `db:"role"`
+		Status string `db:"account_status"`
+	}
+	if err = tx.GetContext(ctx, &account, `SELECT role, account_status FROM users WHERE id = ? FOR UPDATE`, userID); err != nil {
 		return Verification{}, err
 	}
-	// Approved accounts (profile_incomplete/active) must not be able to reset
-	// their application back to pending by resubmitting.
-	if status != "pending" && status != "resubmission_required" {
-		_ = tx.Rollback()
+	if !verifiableRole(account.Role) {
+		return Verification{}, ErrForbidden
+	}
+	// Approved, rejected, suspended or interviewing accounts cannot reset their
+	// application to pending by submitting again.
+	if account.Status != "pending" && account.Status != "resubmission_required" {
 		return Verification{}, ErrInvalidState
 	}
-	var applicationStatus string
-	err = tx.GetContext(ctx, &applicationStatus, `SELECT status FROM verification_applications WHERE user_id = ? FOR UPDATE`, userID)
+	var application struct {
+		ID     string `db:"id"`
+		Status string `db:"status"`
+	}
+	err = tx.GetContext(ctx, &application, `SELECT id, status FROM verification_applications WHERE user_id = ? FOR UPDATE`, userID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		_ = tx.Rollback()
 		return Verification{}, err
 	}
-	if applicationStatus == "under_review" || applicationStatus == "approved" || applicationStatus == "rejected" {
-		_ = tx.Rollback()
+	if application.ID != "" && application.Status != "draft" && application.Status != "resubmission_required" {
 		return Verification{}, ErrInvalidState
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO verification_applications (id, user_id, status, submitted_at) VALUES (?, ?, 'pending', UTC_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE status = 'pending', submitted_at = UTC_TIMESTAMP(6), rejection_reason = NULL, correction_request = NULL`, id, userID)
-	if err != nil {
-		_ = tx.Rollback()
+
+	var missing []string
+	uploaded := map[string]bool{}
+	if application.ID != "" {
+		var types []string
+		if err = tx.SelectContext(ctx, &types, `SELECT document_type FROM verification_documents WHERE application_id = ?`, application.ID); err != nil {
+			return Verification{}, err
+		}
+		for _, t := range types {
+			uploaded[t] = true
+		}
+	}
+	missing = append(missing, missingRequired(account.Role, uploaded)...)
+	var completion uint8
+	if err = tx.GetContext(ctx, &completion, `SELECT COALESCE((SELECT completion_percent FROM role_profiles WHERE user_id = ?), 0)`, userID); err != nil {
 		return Verification{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE users SET account_status = 'pending' WHERE id = ? AND account_status IN ('pending', 'resubmission_required')`, userID); err != nil {
-		_ = tx.Rollback()
+	if completion < 100 {
+		missing = append(missing, "Complete profile details")
+	}
+	if len(missing) > 0 {
+		return Verification{}, &IncompleteError{Missing: missing}
+	}
+
+	if _, err = tx.ExecContext(ctx, `UPDATE verification_applications SET status = 'pending', submitted_at = UTC_TIMESTAMP(6), rejection_reason = NULL, correction_request = NULL WHERE id = ?`, application.ID); err != nil {
 		return Verification{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO audit_logs (id, actor_id, subject_user_id, action) VALUES (?, ?, ?, 'verification_submitted')`, uuid.NewString(), userID, userID); err != nil {
-		_ = tx.Rollback()
+	if _, err = tx.ExecContext(ctx, `UPDATE users SET account_status = 'pending' WHERE id = ?`, userID); err != nil {
+		return Verification{}, err
+	}
+	action := "verification_submitted"
+	if application.Status == "resubmission_required" {
+		action = "verification_resubmitted"
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO audit_logs (id, actor_id, subject_user_id, action, metadata) VALUES (?, ?, ?, ?, JSON_OBJECT('application_id', ?))`, uuid.NewString(), userID, userID, action, application.ID); err != nil {
 		return Verification{}, err
 	}
 	if err = tx.Commit(); err != nil {
@@ -303,12 +366,15 @@ func nullIfEmpty(value string) any {
 
 func (s *Service) ListVerifications(ctx context.Context, status, role string) ([]AdminApplication, error) {
 	var rows []AdminApplication
-	query := `SELECT v.id, v.user_id, v.status, v.submitted_at, v.reviewed_at, v.rejection_reason, v.correction_request, u.name, u.email, u.role, u.account_status, COALESCE(p.profile, JSON_OBJECT()) AS profile, COALESCE(i.interviews, JSON_ARRAY()) AS interviews FROM verification_applications v JOIN users u ON u.id = v.user_id LEFT JOIN (SELECT user_id, JSON_OBJECT('display_name', display_name, 'institution', institution, 'education', education, 'subjects', subjects, 'classes', classes, 'areas', areas, 'completion_percent', completion_percent) AS profile FROM role_profiles) p ON p.user_id = u.id LEFT JOIN (SELECT application_id, JSON_ARRAYAGG(JSON_OBJECT('id', id, 'mode', mode, 'scheduled_at', DATE_FORMAT(scheduled_at, '%Y-%m-%dT%H:%i:%sZ'), 'location_or_link', location_or_link, 'status', status, 'notes', notes)) AS interviews FROM interviews GROUP BY application_id) i ON i.application_id = v.id`
+	query := `SELECT v.id, v.user_id, v.status, v.submitted_at, v.reviewed_at, v.rejection_reason, v.correction_request, u.name, u.email, u.role, u.account_status, COALESCE(p.profile, JSON_OBJECT()) AS profile, COALESCE(i.interviews, JSON_ARRAY()) AS interviews, (SELECT COUNT(*) FROM audit_logs a WHERE a.subject_user_id = v.user_id AND a.action IN ('verification_submitted', 'verification_resubmitted')) AS submission_count, (SELECT COUNT(*) FROM verification_documents d WHERE d.application_id = v.id) AS document_count FROM verification_applications v JOIN users u ON u.id = v.user_id LEFT JOIN (SELECT user_id, JSON_OBJECT('display_name', display_name, 'institution', institution, 'education', education, 'subjects', subjects, 'classes', classes, 'areas', areas, 'completion_percent', completion_percent) AS profile FROM role_profiles) p ON p.user_id = u.id LEFT JOIN (SELECT application_id, JSON_ARRAYAGG(JSON_OBJECT('id', id, 'mode', mode, 'scheduled_at', DATE_FORMAT(scheduled_at, '%Y-%m-%dT%H:%i:%sZ'), 'location_or_link', location_or_link, 'status', status, 'notes', notes)) AS interviews FROM interviews GROUP BY application_id) i ON i.application_id = v.id`
 	args := []any{}
 	conditions := []string{}
 	if status != "" {
 		conditions = append(conditions, "v.status = ?")
 		args = append(args, status)
+	} else {
+		// Drafts have not been submitted, so they are not the reviewer's business yet.
+		conditions = append(conditions, "v.status <> 'draft'")
 	}
 	if role != "" {
 		conditions = append(conditions, "u.role = ?")
@@ -366,7 +432,7 @@ func (s *Service) RecordInterviewOutcome(ctx context.Context, reviewerID, interv
 }
 
 func (s *Service) ListDocuments(ctx context.Context, applicationID string) ([]Document, error) {
-	var documents []Document
+	documents := []Document{}
 	err := s.db.SelectContext(ctx, &documents, `SELECT id, application_id, document_type, original_name, mime_type, byte_size, uploaded_at FROM verification_documents WHERE application_id = ? ORDER BY uploaded_at DESC`, applicationID)
 	return documents, err
 }
@@ -511,50 +577,77 @@ func (s *Service) ListTuition(ctx context.Context, subject, className, area stri
 	return result, rows.Err()
 }
 
-func (s *Service) SaveDocument(ctx context.Context, ownerID, applicationID, documentType, originalName, mimeType string, size int64, content []byte) error {
-	if size <= 0 || size > 10<<20 || !isSupportedImage(mimeType) {
-		return ErrInvalidState
-	}
-
-	if err := os.MkdirAll(s.documentDir, 0700); err != nil {
-		return err
-	}
-
-	var applicationStatus string
-	err := s.db.GetContext(ctx, &applicationStatus, `SELECT status FROM verification_applications WHERE id = ? AND user_id = ?`, applicationID, ownerID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrForbidden
-	}
+// SaveDocument stores one verification picture for the applicant, creating a
+// draft application on the first upload. requestedApplicationID is optional;
+// when given it must be the caller's own application.
+func (s *Service) SaveDocument(ctx context.Context, ownerID, requestedApplicationID, documentType, originalName string, content []byte) (Document, error) {
+	mime, err := validateImage(content)
 	if err != nil {
-		return err
+		return Document{}, err
 	}
-	// Documents are evidence for a decision; they cannot change once reviewed.
-	if applicationStatus != "draft" && applicationStatus != "pending" && applicationStatus != "resubmission_required" {
-		return ErrConflict
+	var role string
+	if err := s.db.GetContext(ctx, &role, `SELECT role FROM users WHERE id = ?`, ownerID); err != nil {
+		return Document{}, err
+	}
+	if !verifiableRole(role) {
+		return Document{}, ErrForbidden
+	}
+	if !allowedDocumentType(role, documentType) {
+		return Document{}, ErrInvalidState
+	}
+	if requestedApplicationID != "" {
+		var owner string
+		err := s.db.GetContext(ctx, &owner, `SELECT user_id FROM verification_applications WHERE id = ?`, requestedApplicationID)
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && owner != ownerID) {
+			return Document{}, ErrForbidden
+		}
+		if err != nil {
+			return Document{}, err
+		}
+	}
+	// INSERT IGNORE relies on the one-application-per-user unique key, so concurrent first uploads share one draft.
+	if _, err := s.db.ExecContext(ctx, `INSERT IGNORE INTO verification_applications (id, user_id, status) VALUES (?, ?, 'draft')`, uuid.NewString(), ownerID); err != nil {
+		return Document{}, err
+	}
+	var application struct {
+		ID     string `db:"id"`
+		Status string `db:"status"`
+	}
+	if err := s.db.GetContext(ctx, &application, `SELECT id, status FROM verification_applications WHERE user_id = ?`, ownerID); err != nil {
+		return Document{}, err
+	}
+	if !editableApplication(application.Status) {
+		return Document{}, ErrConflict
+	}
+	if err := os.MkdirAll(s.documentDir, 0700); err != nil {
+		return Document{}, err
 	}
 	var previousKey string
-	err = s.db.GetContext(ctx, &previousKey, `SELECT storage_key FROM verification_documents WHERE application_id = ? AND document_type = ?`, applicationID, documentType)
+	err = s.db.GetContext(ctx, &previousKey, `SELECT storage_key FROM verification_documents WHERE application_id = ? AND document_type = ?`, application.ID, documentType)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
+		return Document{}, err
 	}
 	key := uuid.NewString()
 	path := filepath.Join(s.documentDir, key)
 	if err := os.WriteFile(path, content, 0600); err != nil {
-		return err
+		return Document{}, err
 	}
 	digest := sha256.Sum256(content)
-	_, err = s.db.ExecContext(ctx, `INSERT INTO verification_documents (id, application_id, document_type, storage_key, original_name, mime_type, byte_size, sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE storage_key = VALUES(storage_key), original_name = VALUES(original_name), mime_type = VALUES(mime_type), byte_size = VALUES(byte_size), sha256 = VALUES(sha256), uploaded_at = UTC_TIMESTAMP(6)`, uuid.NewString(), applicationID, documentType, key, filepath.Base(originalName), mimeType, size, hex.EncodeToString(digest[:]))
+	name := filepath.Base(originalName)
+	if len(name) > 200 {
+		name = name[len(name)-200:]
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO verification_documents (id, application_id, document_type, storage_key, original_name, mime_type, byte_size, sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE storage_key = VALUES(storage_key), original_name = VALUES(original_name), mime_type = VALUES(mime_type), byte_size = VALUES(byte_size), sha256 = VALUES(sha256), uploaded_at = UTC_TIMESTAMP(6)`, uuid.NewString(), application.ID, documentType, key, name, mime, len(content), hex.EncodeToString(digest[:]))
 	if err != nil {
 		_ = os.Remove(path)
-		return err
+		return Document{}, err
 	}
 	// A re-upload replaces the row, so the superseded file would otherwise be orphaned on disk.
 	if previousKey != "" {
 		_ = os.Remove(s.DocumentPath(previousKey))
 	}
-	return nil
-}
-
-func isSupportedImage(mimeType string) bool {
-	return mimeType == "image/jpeg" || mimeType == "image/png" || mimeType == "image/webp"
+	_, _ = s.db.ExecContext(ctx, `INSERT INTO audit_logs (id, actor_id, subject_user_id, action, metadata) VALUES (?, ?, ?, 'document_uploaded', JSON_OBJECT('application_id', ?, 'document_type', ?, 'replaced', ?))`, uuid.NewString(), ownerID, ownerID, application.ID, documentType, previousKey != "")
+	var doc Document
+	err = s.db.GetContext(ctx, &doc, `SELECT id, application_id, document_type, original_name, mime_type, byte_size, uploaded_at FROM verification_documents WHERE application_id = ? AND document_type = ?`, application.ID, documentType)
+	return doc, err
 }

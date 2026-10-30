@@ -50,11 +50,10 @@ export const NAV: Record<Role, NavItem[]> = {
     n('profile', 'Profile', Building2), n('messages', 'Messages', MessageSquare, true), n('notifications', 'Notifications', Bell),
   ],
   admin: [
-    n('overview', 'Overview', LayoutDashboard), n('users', 'Users', Users), n('tutors', 'Tutors', User), n('students', 'Students', GraduationCap),
-    n('parents', 'Parents', Baby), n('coaching', 'Coaching', Building2), n('verification', 'Verification', ShieldCheck),
-    n('tuition-posts', 'Tuition Posts', FileText), n('matches', 'Matches', GitCompare), n('reports', 'Reports', Flag),
-    n('complaints', 'Complaints', AlertTriangle), n('reviews', 'Reviews', Star), n('awards', 'Awards', Award), n('payments', 'Payments', Wallet),
-    n('safety', 'Safety', ShieldAlert), n('analytics', 'Analytics', LineChart), n('appeals', 'Appeals', Gavel), n('settings', 'Settings', Settings),
+    // Only screens backed by the admin API. Moderation, complaints, payments and settings are not built yet (see README).
+    n('overview', 'Overview', LayoutDashboard, true), n('verification', 'Verification', ShieldCheck, true), n('users', 'All users', Users, true),
+    n('tutors', 'Tutors', User), n('coaching', 'Coaching centres', Building2), n('parents', 'Parents', Baby), n('students', 'Students', GraduationCap),
+    n('audit-log', 'Audit log', FileText),
   ],
 }
 

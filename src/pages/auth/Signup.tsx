@@ -66,7 +66,8 @@ export function SignUp() {
         setSession(tokens.access_token, tokens.refresh_token)
         setAuthenticatedUser(user)
         signIn(user.role)
-        nav('/auth/gate')
+        // Tutors and coaching centres continue straight into verification as part of registration.
+        nav(user.role === 'tutor' || user.role === 'coaching' ? `/app/${user.role}/verification` : '/auth/gate')
       })
       .catch((error) => setTaken(error instanceof Error && error.message.includes('already exists')))
       .finally(() => setBusy(false))
@@ -123,7 +124,7 @@ export function RoleSelect() {
             setSession(tokens.access_token, tokens.refresh_token)
             setAuthenticatedUser(user)
             signIn(user.role)
-            nav('/auth/gate')
+            nav(user.role === 'tutor' || user.role === 'coaching' ? `/app/${user.role}/verification` : '/auth/gate')
           })
           .catch(() => setErr(true))
           .finally(() => setBusy(false))

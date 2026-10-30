@@ -3,10 +3,14 @@ package auth
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+
+	"github.com/tuitionhub/backend/internal/ratelimit"
 )
 
 var validate = validator.New()
@@ -30,17 +34,46 @@ type resetRequest struct {
 	NewPassword string `json:"new_password" validate:"required,min=8,max=72"`
 }
 
+type limiters struct {
+	loginAccount *ratelimit.Limiter
+	loginIP      *ratelimit.Limiter
+	signupIP     *ratelimit.Limiter
+}
+
 func RegisterRoutes(r *gin.RouterGroup, service *Service) {
+	l := limiters{
+		loginAccount: ratelimit.New(service.cfg.LoginLimitPerAccount, 15*time.Minute),
+		loginIP:      ratelimit.New(service.cfg.LoginLimitPerIP, 15*time.Minute),
+		signupIP:     ratelimit.New(service.cfg.SignupLimitPerIP, time.Hour),
+	}
 	a := r.Group("/auth")
-	a.POST("/register", register(service))
-	a.POST("/login", login(service))
+	a.POST("/register", limitByIP(l.signupIP), register(service))
+	a.POST("/login", login(service, l))
 	a.POST("/refresh", refresh(service))
 	a.POST("/logout", logout(service))
 	a.GET("/me", requireAuth(service), me(service))
-	a.POST("/forgot-password", forgotPassword(service))
-	a.POST("/reset-password", resetPassword(service))
-	a.POST("/verify-email/request", requestEmailVerification(service))
-	a.POST("/verify-email", verifyEmail(service))
+	a.POST("/forgot-password", limitByIP(l.signupIP), forgotPassword(service))
+	a.POST("/reset-password", limitByIP(l.signupIP), resetPassword(service))
+	a.POST("/verify-email/request", limitByIP(l.signupIP), requestEmailVerification(service))
+	a.POST("/verify-email", limitByIP(l.signupIP), verifyEmail(service))
+}
+
+func tooManyRequests(c *gin.Context, wait time.Duration) {
+	c.Header("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+	c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "too many attempts; please wait and try again"})
+}
+
+// limitByIP counts every request (successful or not) from one client address.
+func limitByIP(l *ratelimit.Limiter) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		key := c.ClientIP()
+		if ok, wait := l.Allow(key); !ok {
+			tooManyRequests(c, wait)
+			return
+		}
+		l.Hit(key)
+		c.Next()
+	}
 }
 
 func register(s *Service) gin.HandlerFunc {
@@ -65,17 +98,37 @@ func register(s *Service) gin.HandlerFunc {
 	}
 }
 
-func login(s *Service) gin.HandlerFunc {
+// login limits failed attempts per account+address (password guessing against
+// one user) and per address (spraying many accounts). Only failures count, and
+// a success clears the account counter.
+func login(s *Service, l limiters) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req loginRequest
 		if !bind(c, &req) {
 			return
 		}
+		ip := c.ClientIP()
+		accountKey := strings.ToLower(strings.TrimSpace(req.Email)) + "|" + ip
+		if ok, wait := l.loginAccount.Allow(accountKey); !ok {
+			tooManyRequests(c, wait)
+			return
+		}
+		if ok, wait := l.loginIP.Allow(ip); !ok {
+			tooManyRequests(c, wait)
+			return
+		}
 		user, tokens, err := s.Login(c.Request.Context(), req.Email, req.Password)
 		if errors.Is(err, ErrInvalidCredentials) {
+			l.loginAccount.Hit(accountKey)
+			l.loginIP.Hit(ip)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid email or password"})
 			return
 		}
+		if errors.Is(err, ErrSuspended) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "this account is suspended; contact support"})
+			return
+		}
+		l.loginAccount.Reset(accountKey)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not sign in"})
 			return
@@ -91,6 +144,10 @@ func refresh(s *Service) gin.HandlerFunc {
 			return
 		}
 		user, tokens, err := s.Refresh(c.Request.Context(), req.RefreshToken)
+		if errors.Is(err, ErrSuspended) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "this account is suspended; contact support"})
+			return
+		}
 		if errors.Is(err, ErrInvalidToken) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired refresh token"})
 			return
@@ -130,6 +187,19 @@ func RequireAuth(s *Service) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired access token"})
 			return
 		}
+		// Access tokens are stateless, so a deleted or suspended account would otherwise
+		// keep working until the token expires. One indexed lookup closes that gap.
+		role, status, err := s.AccountState(c.Request.Context(), id)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired access token"})
+			return
+		}
+		if status == "suspended" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "this account is suspended; contact support"})
+			return
+		}
+		c.Set("role", role)
+		c.Set("account_status", status)
 		c.Set("user_id", id)
 		c.Next()
 	}
@@ -235,5 +305,5 @@ func bind(c *gin.Context, target interface{}) bool {
 }
 
 func publicUser(user User) gin.H {
-	return gin.H{"id": user.ID, "name": user.Name, "email": user.Email, "phone": user.Phone, "role": user.Role, "email_verified_at": user.EmailVerifiedAt, "created_at": user.CreatedAt}
+	return gin.H{"id": user.ID, "name": user.Name, "email": user.Email, "phone": user.Phone, "role": user.Role, "account_status": user.AccountStatus, "email_verified_at": user.EmailVerifiedAt, "created_at": user.CreatedAt}
 }

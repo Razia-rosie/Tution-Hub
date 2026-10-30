@@ -23,7 +23,9 @@ type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   loading?: boolean
   icon?: ReactNode
 }
-const btnBase = 'inline-flex items-center justify-center gap-2 rounded-input font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 min-h-11 duration-150 md:min-h-0'
+// `relative` keeps visually hidden (sr-only, absolutely positioned) labels inside the button; without it they
+// escape table scroll containers and widen the whole page on small screens.
+const btnBase = 'relative inline-flex items-center justify-center gap-2 rounded-input font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 min-h-11 duration-150 md:min-h-0'
 const btnVar = {
   primary: 'bg-blue-600 text-white shadow-sm hover:bg-navy-700 active:bg-navy-900',
   secondary: 'border border-gray-400 bg-white text-navy-900 hover:border-navy-700 hover:bg-gray-100',

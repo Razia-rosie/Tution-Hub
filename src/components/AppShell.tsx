@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, useParams, Navigate, Link } from 'react-r
 import { Bell, ShieldCheck, X, MoreHorizontal, LogOut, Monitor } from 'lucide-react'
 import { NAV, ROLES, verifyPath, type Role } from '../lib/nav'
 import { useStore, type VerifyState } from '../lib/store'
-import { effectiveStatus, getWorkflowDashboard } from '../lib/api'
+import { effectiveStatus, getNotifications, getWorkflowDashboard } from '../lib/api'
 import { Avatar, IconButton, Select, StatusChip, cx } from './ui'
 
 const isRole = (r?: string): r is Role => !!r && r in NAV
@@ -24,9 +24,18 @@ export default function AppShell() {
   // Sync the banner with the server; local verification state is not persisted across reloads.
   useEffect(() => {
     if (!userRole || userRole === 'admin') return
-    getWorkflowDashboard().then((d) => s.setVerification(userRole, effectiveStatus(d) as VerifyState)).catch(() => {})
+    // The store's preview screens gate on 'verified'; the server calls the same state 'active'.
+    getWorkflowDashboard().then((d) => { const st = effectiveStatus(d); s.setVerification(userRole, (st === 'active' ? 'verified' : st) as VerifyState) }).catch(() => {})
     // s.setVerification changes identity on every store update; re-run only when the user changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userRole])
+  const [unread, setUnread] = useState(0)
+  useEffect(() => {
+    if (!userRole || userRole === 'admin') return
+    const refresh = () => getNotifications().then((r) => setUnread((r.notifications ?? []).filter((n) => !n.read_at).length)).catch(() => {})
+    void refresh()
+    window.addEventListener('notifications:changed', refresh)
+    return () => window.removeEventListener('notifications:changed', refresh)
   }, [userRole])
   if (s.restoring) return <div role="status" className="flex min-h-screen items-center justify-center bg-offwhite-50 text-sm text-gray-600">Restoring your session…</div>
   if (!s.signedIn || !s.user) return <Navigate to="/login" replace />
@@ -35,7 +44,8 @@ export default function AppShell() {
   const items = NAV[role]
 
   const vstate = s.verification[role]
-  const needsVerify = role !== 'admin' && vstate !== 'verified' && vstate !== 'active'
+  // Only tutors and coaching centres go through verification.
+  const needsVerify = (role === 'tutor' || role === 'coaching') && vstate !== 'verified' && vstate !== 'active'
   const verifyHref = verifyPath(role)
 
   return (
@@ -72,7 +82,7 @@ export default function AppShell() {
                 <label className="flex items-center gap-2 text-sm"><span className="hidden text-gray-600 sm:inline">Child</span>
                   <Select aria-label="Child switcher" value={cur.short} onChange={(e) => { s.setChild(e.target.value); s.toast(`Showing ${e.target.value}`, 'info') }} options={ck.map((k) => k.short)} className="!w-auto !py-1.5" />
                 </label>) })()}
-            <IconButton label="Notifications" onClick={() => nav(`/app/${role}/notifications`)}><Bell size={20} /></IconButton>
+            {role !== 'admin' && <span className="relative"><IconButton label={unread ? `Notifications, ${unread} unread` : 'Notifications'} onClick={() => nav(`/app/${role}/notifications`)}><Bell size={20} /></IconButton>{unread > 0 && <span aria-hidden className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-danger-600 px-1 text-center text-[10px] font-bold leading-4 text-white">{unread > 9 ? '9+' : unread}</span>}</span>}
             <Avatar name={s.user.name} size={32} />
           </div>
         </header>

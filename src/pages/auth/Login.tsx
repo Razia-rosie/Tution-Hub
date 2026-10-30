@@ -5,7 +5,7 @@ import { Button, Field, Input, btnClass } from '../../components/ui'
 import { AuthCard, AuthHead, Notice } from './Layout'
 import { useStore } from '../../lib/store'
 import { validEmail } from '../../lib/validate'
-import { loginAccount } from '../../lib/api'
+import { loginAccount, ApiError } from '../../lib/api'
 
 export function PasswordInput({ id, value, onChange, invalid, auto = 'current-password' }: { id: string; value: string; onChange: (v: string) => void; invalid?: boolean; auto?: string }) {
   const [show, setShow] = useState(false)
@@ -27,6 +27,7 @@ export default function Login() {
   const [touched, setTouched] = useState(false)
   const [busy, setBusy] = useState(false)
   const [fail, setFail] = useState<'' | 'unknown' | 'wrong'>('')
+  const [failMessage, setFailMessage] = useState('')
   const [locked, setLocked] = useState(false)
   const eErr = touched ? (!email ? 'Enter your email address.' : !validEmail(email) ? 'This email looks incomplete. Use a format like name@example.com.' : '') : ''
   const pErr = touched && !pw ? 'Enter your password.' : ''
@@ -41,7 +42,10 @@ export default function Login() {
       setSession(tokens.access_token, tokens.refresh_token); setAuthenticatedUser(user); signIn(user.role); toast('Signed in successfully', 'success')
       nav('/auth/gate', { state })
     } catch (error) {
-      setFail(error instanceof Error && error.message.includes('invalid') ? 'wrong' : 'unknown')
+      // 401 is deliberately the same for unknown emails and wrong passwords; other errors (rate limit, suspension) carry their own message.
+      const status = error instanceof ApiError ? error.status : 0
+      setFail(status === 401 ? 'wrong' : 'unknown')
+      setFailMessage(status && status !== 401 && error instanceof Error ? error.message : 'We could not sign you in right now. Please try again.')
     } finally {
       setBusy(false)
     }
@@ -64,7 +68,7 @@ export default function Login() {
       <AuthCard>
         <AuthHead icon={<LogIn size={22} strokeWidth={1.5} aria-hidden />} title="Welcome back" lead="Log in to continue your tuition journey." />
         <form onSubmit={submit} noValidate className="space-y-5">
-          {fail === 'unknown' && <Notice>No account found for <strong>{email}</strong>. Check the spelling, or <Link to="/signup" className="font-semibold underline">create an account</Link>.</Notice>}
+          {fail === 'unknown' && <Notice>{failMessage}</Notice>}
           {fail === 'wrong' && <Notice>That email or password is not correct.</Notice>}
           <Field label="Email" error={eErr}>{(id) => <Input id={id} type="email" autoComplete="email" aria-invalid={!!eErr} value={email} onChange={(e) => setEmail(e.target.value)} />}</Field>
           <Field label="Password" error={pErr}>{(id) => <PasswordInput id={id} value={pw} onChange={setPw} invalid={!!pErr} />}</Field>

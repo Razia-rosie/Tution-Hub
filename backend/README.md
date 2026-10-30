@@ -60,47 +60,81 @@ Passwords are never stored in plaintext. Refresh and reset tokens are stored
 as SHA-256 hashes, and the migration is automatically applied by MySQL's
 container initialization.
 
+## Verification (manual, picture-based)
+
+Only **private tutors** and **coaching centres** are verified. Students and
+parents start `active`. Verification is entirely manual: applicants upload
+pictures of their documents and an administrator looks at them and decides.
+There is no OCR, AI scanning, face matching or automatic approval anywhere.
+
+Flow: register → upload pictures (creates a `draft`) → fill details → submit →
+`pending` → admin review → **approve** (account `active`, restricted features
+unlock), **reject** (final; the reason is shown to the applicant) or **request
+corrections** (`resubmission_required`; the applicant may replace pictures and
+edit details, then resubmit, which returns the application to `pending`).
+An optional interview can be scheduled while the application is pending.
+
+Required pictures:
+
+| Role     | Type             | Required |
+|----------|------------------|----------|
+| tutor    | `identity`       | yes      |
+| tutor    | `education`      | no       |
+| coaching | `trade_license`  | yes      |
+| coaching | `owner_identity` | yes      |
+
+Submission is refused (422, with a `missing` list) until the required pictures
+and the profile (name, education/registration, subjects, classes, areas) exist.
+Pictures and profile are frozen from submission until corrections are
+requested. Uploads must be real JPEG, PNG or WebP images of at most 10 MB and
+40 megapixels: the bytes are sniffed and fully decoded, so renamed PDFs, Word
+files, SVGs, GIFs, truncated or header-only files are rejected. Pictures are
+stored outside the web root as `0600` files named by random UUIDs, served only
+to the owner and administrators (others get 404) with `Cache-Control: no-store`,
+`nosniff` and a sandboxing CSP. Every upload, admin view, decision, interview
+and suspension is written to `audit_logs`.
+
 ## Workflow API
 
-The additive workflow schema is in `migrations/002_workflows.sql`. Existing
-records are preserved. It can be applied to an existing database with:
+Authenticated endpoints under `/api/v1/workflow`:
 
-```sh
-docker compose exec -T mysql mysql -uroot -p tuitionhub < migrations/002_workflows.sql
-```
-
-Authenticated workflow endpoints are under `/api/v1/workflow`:
-
-- `GET /dashboard`
+- `GET /dashboard` - account, profile, verification, own pictures, requirements
 - `PUT /profile`
+- `POST /verification/documents` - multipart `document_type` + `document`
+- `GET /verification/documents/:id` - the picture (owner or admin)
 - `POST /verification/submit`
-- `POST /verification/documents` (JPEG, PNG, or WebP only; max 10 MB)
-- `GET /notifications`
+- `GET /notifications`, `POST /notifications/read` (`{"id"}` or `{}` for all)
 - `GET` and `POST /relationships`
-- `GET /tuition`
+- `GET /tuition` (active accounts only)
 
-Administrator verification review and interview endpoints are under
-`/api/v1/workflow/admin`:
+Administrator endpoints under `/api/v1/workflow/admin` (role `admin` only):
 
-- `GET /verifications?status=&role=` - list persisted applications with
-  applicant/profile/interview details
-- `GET /verifications/:id/documents` - list private document metadata
-- `POST /verifications/:id/decision` - approve, reject, or request
-  resubmission; rejection and resubmission require a reason of at least ten
-  characters
-- `POST /verifications/:id/interviews` - schedule an online or in-person
-  interview
-- `POST /verifications/:id/interviews/:interviewID/outcome` - record a
-  completed or cancelled scheduled interview
+- `GET /verifications?status=&role=` - submitted applications (drafts hidden)
+  with profile, interviews, submission and picture counts
+- `GET /verifications/:id/documents`, `GET /verifications/:id/history`
+- `POST /verifications/:id/decision` - `approved`, `rejected` or
+  `resubmission_required`; the last two need a reason of 10+ characters
+- `POST /verifications/:id/interviews`, `.../interviews/:interviewID/outcome`
+- `GET /stats`, `GET /users?role=&status=&q=&limit=&offset=`
+- `POST /users/:id/suspend` (`{"reason"}`), `POST /users/:id/reactivate`
+- `GET /audit-logs?action=&limit=&offset=`
 
-These endpoints require an authenticated user whose role is `admin`.
-Application transitions, ownership, and document access are checked by the
-backend. Identity documents are written outside the public web root with
-restrictive filesystem permissions.
-The storage directory is `DOCUMENT_DIR` (default `private_documents`, relative
-to the API's working directory) and is git-ignored. Documents can only be
-uploaded or replaced while the application is `pending` or
-`resubmission_required`.
+No database migration is needed beyond `001` and `002`.
+
+## Security configuration
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `LOGIN_LIMIT_PER_ACCOUNT` | 5 | failed logins per email+IP per 15 min before 429 |
+| `LOGIN_LIMIT_PER_IP` | 50 | failed logins per IP per 15 min |
+| `SIGNUP_LIMIT_PER_IP` | 20 | register / reset / verify-email calls per IP per hour |
+| `TRUSTED_PROXIES` | empty | comma-separated proxies allowed to set `X-Forwarded-For` |
+| `DOCUMENT_DIR` | `private_documents` | picture storage, outside the web root |
+
+Rate limits are in memory (per API process). Suspension, reuse of a rotated
+refresh token (which revokes all of that user's sessions) and deleted accounts
+take effect on the next request, because every authenticated request checks
+the account in the database.
 
 ## Initial administrator bootstrap
 
@@ -145,27 +179,38 @@ existing frontend login and open `/app/admin/verification`. A successful
 database insert alone is not an end-to-end verification of the admin
 workflow.
 
-## End-to-end workflow test
+## Tests
 
-`tests/verification-e2e.mjs` drives the whole verification workflow over HTTP
-(registration, tokens, profile, submission, document upload rules, admin
-review, interviews, role permissions). It creates new accounts with random
-emails and records decisions, so run it against a separate database, never
-your development data:
+All destructive tests run against a separate `tuitionhub_e2e` database. The
+integration tests refuse to run against any database whose name does not end
+in `_e2e`.
 
 ```sh
-# one-time: create and migrate an isolated database (as MySQL root)
+# one-time: create and migrate the isolated database (as MySQL root)
 docker compose exec -T mysql mysql -uroot -proot -e "CREATE DATABASE tuitionhub_e2e; GRANT ALL ON tuitionhub_e2e.* TO 'tuitionhub'@'%';"
 docker compose exec -T mysql mysql -uroot -proot tuitionhub_e2e < migrations/001_auth.sql
 docker compose exec -T mysql mysql -uroot -proot tuitionhub_e2e < migrations/002_workflows.sql
+export E2E_DATABASE_URL='tuitionhub:tuitionhub@tcp(127.0.0.1:3306)/tuitionhub_e2e?parseTime=true&charset=utf8mb4&loc=UTC'
 
-# run a second API on :8090 against it, bootstrap its admin, then:
-E2E_API=http://localhost:8090 E2E_ADMIN_EMAIL=... E2E_ADMIN_PASSWORD=... node ../tests/verification-e2e.mjs
+# one-time: an admin for the test database only
+JWT_SECRET=... DATABASE_URL="$E2E_DATABASE_URL" ADMIN_BOOTSTRAP_PASSWORD=... go run ./cmd/bootstrap-admin -name "E2E Admin" -email e2e-admin@tuitionhub.test
+export E2E_ADMIN_EMAIL=e2e-admin@tuitionhub.test E2E_ADMIN_PASSWORD=...
+
+go test ./...                                         # unit tests
+go test -tags integration ./internal/integration     # integration tests (real MySQL)
+
+# a second API on :8090 against the test database
+DATABASE_URL="$E2E_DATABASE_URL" JWT_SECRET=... HTTP_ADDR=:8090 DOCUMENT_DIR=/tmp/e2e-docs SIGNUP_LIMIT_PER_IP=1000 go run ./cmd/server
+
+# from the repository root
+E2E_API=http://localhost:8090 node tests/verification-e2e.mjs            # API end to end
+API_PROXY_TARGET=http://localhost:8090 PORT=5174 pnpm dev                 # frontend for the test API
+E2E_WEB=http://127.0.0.1:5174 node tests/browser-e2e.mjs                  # browser end to end (Chrome)
+npx tsc --noEmit -p . && pnpm build                                       # type-check and production build
 ```
 
-To click through the same database in the browser, start Vite with
-`API_PROXY_TARGET=http://localhost:8090 PORT=5174 pnpm dev`.
-
-The older `tests/*-journey-*.mjs` and `*-sweep-*.mjs` puppeteer scripts predate
-real authentication: they open `/app/...` without signing in and drive the
-removed "Demo controls" drawer, so they no longer run as written.
+`SIGNUP_LIMIT_PER_IP` is raised only on the test API so repeated runs from one
+machine are not throttled; the login limit is tested at its default.
+`tests/legacy/` holds the original puppeteer scripts. They drove the removed
+demo-controls drawer without signing in and no longer run; the browser suite
+above replaces them.

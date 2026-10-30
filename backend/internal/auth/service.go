@@ -24,7 +24,23 @@ var (
 	ErrConflict           = errors.New("account already exists")
 	ErrAdminExists        = errors.New("an administrator already exists")
 	ErrInvalidInput       = errors.New("invalid administrator bootstrap input")
+	ErrSuspended          = errors.New("account suspended")
 )
+
+// dummyHash is compared against when an email is unknown so that a login for a
+// missing account costs the same bcrypt time as a wrong password, which keeps
+// response timing from revealing which emails are registered.
+var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("timing-equaliser-not-a-password"), bcrypt.DefaultCost)
+
+// InitialAccountStatus returns the status a newly registered account starts in.
+// Only tutors and coaching centres go through manual verification; students and
+// parents are usable immediately.
+func InitialAccountStatus(role string) string {
+	if role == "tutor" || role == "coaching" {
+		return "pending"
+	}
+	return "active"
+}
 
 type User struct {
 	ID              string     `db:"id" json:"id"`
@@ -33,6 +49,7 @@ type User struct {
 	Phone           *string    `db:"phone" json:"phone,omitempty"`
 	PasswordHash    string     `db:"password_hash"`
 	Role            string     `db:"role" json:"role"`
+	AccountStatus   string     `db:"account_status" json:"account_status"`
 	EmailVerifiedAt *time.Time `db:"email_verified_at" json:"email_verified_at,omitempty"`
 	CreatedAt       time.Time  `db:"created_at" json:"created_at"`
 }
@@ -97,12 +114,13 @@ func (s *Service) BootstrapAdmin(ctx context.Context, name, email, password stri
 		return User{}, err
 	}
 	user := User{
-		ID:           uuid.NewString(),
-		Name:         name,
-		Email:        email,
-		PasswordHash: string(hash),
-		Role:         "admin",
-		CreatedAt:    time.Now().UTC(),
+		ID:            uuid.NewString(),
+		Name:          name,
+		Email:         email,
+		PasswordHash:  string(hash),
+		Role:          "admin",
+		AccountStatus: "active",
+		CreatedAt:     time.Now().UTC(),
 		EmailVerifiedAt: func() *time.Time {
 			now := time.Now().UTC()
 			return &now
@@ -127,8 +145,9 @@ func (s *Service) Register(ctx context.Context, name, email, password, role stri
 		return User{}, Tokens{}, err
 	}
 	user := User{ID: uuid.NewString(), Name: strings.TrimSpace(name), Email: email, Phone: phone, PasswordHash: string(passwordHash), Role: role}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO users (id, name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, ?, ?)`,
-		user.ID, user.Name, user.Email, user.Phone, user.PasswordHash, user.Role)
+	user.AccountStatus = InitialAccountStatus(role)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO users (id, name, email, phone, password_hash, role, account_status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		user.ID, user.Name, user.Email, user.Phone, user.PasswordHash, user.Role, user.AccountStatus)
 	if err != nil {
 		if strings.Contains(err.Error(), "Duplicate entry") {
 			return User{}, Tokens{}, ErrConflict
@@ -141,9 +160,17 @@ func (s *Service) Register(ctx context.Context, name, email, password, role stri
 
 func (s *Service) Login(ctx context.Context, email, password string) (User, Tokens, error) {
 	var user User
-	err := s.db.GetContext(ctx, &user, `SELECT id, name, email, phone, password_hash, role, email_verified_at, created_at FROM users WHERE email = ? LIMIT 1`, strings.ToLower(strings.TrimSpace(email)))
-	if err != nil || bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
+	err := s.db.GetContext(ctx, &user, `SELECT id, name, email, phone, password_hash, role, account_status, email_verified_at, created_at FROM users WHERE email = ? LIMIT 1`, strings.ToLower(strings.TrimSpace(email)))
+	if err != nil {
+		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 		return User{}, Tokens{}, ErrInvalidCredentials
+	}
+	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
+		return User{}, Tokens{}, ErrInvalidCredentials
+	}
+	// Checked only after the password, so a suspension is never revealed to someone without it.
+	if user.AccountStatus == "suspended" {
+		return User{}, Tokens{}, ErrSuspended
 	}
 	tokens, err := s.issueTokens(ctx, user)
 	return user, tokens, err
@@ -151,7 +178,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (User, Toke
 
 func (s *Service) User(ctx context.Context, id string) (User, error) {
 	var user User
-	err := s.db.GetContext(ctx, &user, `SELECT id, name, email, phone, password_hash, role, email_verified_at, created_at FROM users WHERE id = ?`, id)
+	err := s.db.GetContext(ctx, &user, `SELECT id, name, email, phone, password_hash, role, account_status, email_verified_at, created_at FROM users WHERE id = ?`, id)
 	return user, err
 }
 
@@ -159,15 +186,48 @@ func (s *Service) Refresh(ctx context.Context, raw string) (User, Tokens, error)
 	hash := tokenHash(raw)
 	var session struct {
 		User
-		TokenID string `db:"token_id"`
+		TokenID   string     `db:"token_id"`
+		RevokedAt *time.Time `db:"revoked_at"`
 	}
-	err := s.db.GetContext(ctx, &session, `SELECT u.id, u.name, u.email, u.phone, u.password_hash, u.role, u.email_verified_at, u.created_at, rt.id AS token_id FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id WHERE rt.token_hash = ? AND rt.revoked_at IS NULL AND rt.expires_at > UTC_TIMESTAMP(6)`, hash)
+	err := s.db.GetContext(ctx, &session, `SELECT u.id, u.name, u.email, u.phone, u.password_hash, u.role, u.account_status, u.email_verified_at, u.created_at, rt.id AS token_id, rt.revoked_at FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id WHERE rt.token_hash = ? AND rt.expires_at > UTC_TIMESTAMP(6)`, hash)
 	if err != nil {
 		return User{}, Tokens{}, ErrInvalidToken
 	}
-	_, _ = s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE token_hash = ?`, hash)
+	if session.RevokedAt != nil {
+		// A rotated token presented again means it was copied. End every session
+		// for the account so a stolen token stops working for the thief too.
+		_, _ = s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE user_id = ? AND revoked_at IS NULL`, session.ID)
+		return User{}, Tokens{}, ErrInvalidToken
+	}
+	if session.AccountStatus == "suspended" {
+		return User{}, Tokens{}, ErrSuspended
+	}
+	// Conditional update: of two concurrent refreshes with the same token, only one wins.
+	result, err := s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE id = ? AND revoked_at IS NULL`, session.TokenID)
+	if err != nil {
+		return User{}, Tokens{}, err
+	}
+	if rows, _ := result.RowsAffected(); rows != 1 {
+		return User{}, Tokens{}, ErrInvalidToken
+	}
 	tokens, err := s.issueTokens(ctx, session.User)
 	return session.User, tokens, err
+}
+
+// AccountState returns the role and status used for per-request authorization.
+func (s *Service) AccountState(ctx context.Context, id string) (role, status string, err error) {
+	var row struct {
+		Role   string `db:"role"`
+		Status string `db:"account_status"`
+	}
+	err = s.db.GetContext(ctx, &row, `SELECT role, account_status FROM users WHERE id = ?`, id)
+	return row.Role, row.Status, err
+}
+
+// RevokeAllSessions ends every refresh session for a user, e.g. on suspension.
+func (s *Service) RevokeAllSessions(ctx context.Context, userID string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE user_id = ? AND revoked_at IS NULL`, userID)
+	return err
 }
 
 func (s *Service) RevokeRefresh(ctx context.Context, raw string) error {
