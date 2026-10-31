@@ -50,13 +50,16 @@ does not read `.env` files itself).
 | Variable | Default | Meaning |
 |---|---|---|
 | `APP_ENV` | `development` | `production` disables development-only responses (e.g. reset tokens in API responses) and enables Gin release mode |
-| `HTTP_ADDR` | `:8080` | Listen address |
+| `HTTP_ADDR` | `:8080` | Listen address (falls back to `:$PORT` when `PORT` is set, as on Vercel) |
 | `DATABASE_URL` | — (required) | go-sql-driver DSN; keep `parseTime=true&charset=utf8mb4&loc=UTC` |
 | `JWT_SECRET` | — (required, ≥ 32 chars) | HMAC key for access tokens |
 | `ACCESS_TOKEN_TTL` | `15m` | Access-token lifetime |
 | `REFRESH_TOKEN_TTL` | `720h` | Refresh-token lifetime |
 | `COOKIE_SECURE` | `false` | Set `true` behind HTTPS so the session cookie is `Secure` |
 | `DOCUMENT_DIR` | `private_documents` | Private upload storage (relative to the API's working directory) |
+| `FILE_STORAGE` | `disk` | `disk` stores uploads under `DOCUMENT_DIR`; `database` stores them in the `stored_files` table (for hosts without a persistent disk) |
+| `MAX_UPLOAD_MB` | `10` | Per-file upload limit; use `4` on Vercel (4.5 MB request limit) and set `VITE_MAX_UPLOAD_MB` to match |
+| `CLIENT_IP_HEADER` | empty | Header holding the real client IP set by the hosting edge (`X-Real-IP` on Vercel); only set it when every request passes through that edge |
 | `LOGIN_LIMIT_PER_ACCOUNT` | `5` | Failed logins per email + IP per 15 minutes |
 | `LOGIN_LIMIT_PER_IP` | `50` | Failed logins per IP per 15 minutes |
 | `SIGNUP_LIMIT_PER_IP` | `20` | Register / reset / verify-email calls per IP per hour |
@@ -66,7 +69,8 @@ does not read `.env` files itself).
 | `DB_MAX_IDLE_CONNS` | same as `DB_MAX_OPEN_CONNS` | Connections kept open for reuse (capped at the open limit) |
 | `DB_CONN_MAX_LIFETIME` | `5m` | Connections are recycled after this age |
 
-Frontend: `API_PROXY_TARGET` (Vite proxy target, default `http://localhost:8080`) and `PORT`.
+Frontend: `API_PROXY_TARGET` (Vite proxy target, default `http://localhost:8080`), `PORT`, and
+`VITE_MAX_UPLOAD_MB` (upload limit shown and checked in the browser, default `10`).
 
 The local Docker credentials (`tuitionhub` / `tuitionhub`, root `root`) exist only for the local
 container. Never reuse them, or the template's `JWT_SECRET`, anywhere else.

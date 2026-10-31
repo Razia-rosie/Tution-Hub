@@ -14,6 +14,7 @@ single-page app (`src/`) talking to a Go REST API (`backend/`) backed by MySQL 8
 | [testing.md](testing.md) | Test suites and how to run them against an isolated database |
 | [demo-accounts.md](demo-accounts.md) | Development-only demo accounts and connected demo data |
 | [deployment.md](deployment.md) | Requirements for a production deployment |
+| [deployment-free.md](deployment-free.md) | $0 deployment on Vercel Hobby + TiDB Cloud Starter |
 | [known-issues.md](known-issues.md) | Open gaps, technical debt and untested areas |
 
 Also see the top-level [README](../README.md), [PROGRESS.md](../PROGRESS.md) (phase status

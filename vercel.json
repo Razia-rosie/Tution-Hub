@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "web": {
+      "root": ".",
+      "framework": "vite",
+      "installCommand": "pnpm install --frozen-lockfile",
+      "buildCommand": "pnpm build",
+      "outputDirectory": "dist",
+      "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+    },
+    "api": {
+      "root": "backend/",
+      "framework": "go"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": { "service": "api" } },
+    { "source": "/(.*)", "destination": { "service": "web" } }
+  ]
+}

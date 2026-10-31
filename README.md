@@ -27,6 +27,7 @@ Gin + sqlx REST API (backend) · MySQL 8 (Docker for local development).
 | [docs/security.md](docs/security.md) | Authentication, sessions, access control, uploads, rate limiting |
 | [docs/testing.md](docs/testing.md) | Unit, integration, API and browser test suites |
 | [docs/deployment.md](docs/deployment.md) | What a production deployment needs (not yet done) |
+| [docs/deployment-free.md](docs/deployment-free.md) | $0 deployment plan: Vercel Hobby + TiDB Cloud Starter |
 | [docs/known-issues.md](docs/known-issues.md) | Open gaps and technical debt |
 | [PROGRESS.md](PROGRESS.md) | Phase status, verified test results, prioritised remaining work |
 | [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) | Condensed technical handoff for continuing development |
