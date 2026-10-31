@@ -12,7 +12,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -23,17 +22,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
+	"github.com/tuitionhub/backend/internal/filestore"
 	"github.com/tuitionhub/backend/internal/workflow"
 )
 
 type Service struct {
 	db       *sqlx.DB
-	fileDir  string
+	files    filestore.Store
 	validate *validator.Validate
 }
 
-func NewService(db *sqlx.DB, documentDir string) *Service {
-	return &Service{db: db, fileDir: filepath.Join(documentDir, "files"), validate: validator.New()}
+func NewService(db *sqlx.DB, files filestore.Store) *Service {
+	return &Service{db: db, files: files, validate: validator.New()}
 }
 
 // apiError carries an HTTP status and a message that is safe to show users.
@@ -166,8 +166,6 @@ func (s *Service) blocked(ctx context.Context, a, b string) bool {
 
 // ---------- private file storage (materials, submissions, profile photos) ----------
 
-const maxFileBytes = 10 << 20
-
 type storedFile struct {
 	Key, Name, Mime string
 }
@@ -180,11 +178,11 @@ func (s *Service) readUpload(c *gin.Context, field string, allowPDF bool) (*stor
 		return nil, nil, nil
 	}
 	if err != nil {
-		return nil, nil, badRequest("the file could not be read; files must be 10 MB or smaller")
+		return nil, nil, badRequest("the file could not be read; files must be " + workflow.MaxUploadLabel() + " or smaller")
 	}
 	defer file.Close()
-	if header.Size <= 0 || header.Size > maxFileBytes {
-		return nil, nil, badRequest("files must be 10 MB or smaller")
+	if header.Size <= 0 || header.Size > int64(workflow.MaxUploadBytes()) {
+		return nil, nil, badRequest("files must be " + workflow.MaxUploadLabel() + " or smaller")
 	}
 	content := make([]byte, header.Size)
 	if _, err := io.ReadFull(file, content); err != nil {
@@ -211,37 +209,35 @@ func isPDF(content []byte) bool {
 	return bytes.HasPrefix(content, []byte("%PDF-")) && http.DetectContentType(content) == "application/pdf" && bytes.Contains(content[max(0, len(content)-1024):], []byte("%%EOF"))
 }
 
-func (s *Service) saveFile(f *storedFile, content []byte) error {
-	if err := os.MkdirAll(s.fileDir, 0o700); err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(s.fileDir, f.Key), content, 0o600)
+func (s *Service) saveFile(ctx context.Context, f *storedFile, content []byte) error {
+	return s.files.Put(ctx, f.Key, f.Mime, content)
 }
 
-func (s *Service) removeFile(key string) {
-	if key != "" {
-		_ = os.Remove(filepath.Join(s.fileDir, filepath.Base(key)))
-	}
+func (s *Service) removeFile(ctx context.Context, key string) {
+	s.files.Delete(ctx, key)
 }
 
 // serveFile streams a stored file with headers that stop browsers caching,
 // sniffing or executing it.
 func (s *Service) serveFile(c *gin.Context, key, name, mime string) {
-	path := filepath.Join(s.fileDir, filepath.Base(key))
-	if _, err := os.Stat(path); err != nil {
+	content, err := s.files.Get(c.Request.Context(), key)
+	if errors.Is(err, filestore.ErrNotFound) {
 		fail(c, notFound("file not found"))
+		return
+	}
+	if err != nil {
+		fail(c, err)
 		return
 	}
 	c.Header("Cache-Control", "private, no-store")
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("Content-Security-Policy", "default-src 'none'; img-src 'self'; sandbox")
-	c.Header("Content-Type", mime)
 	disposition := "inline"
 	if mime == "application/pdf" {
 		disposition = "attachment"
 	}
 	c.Header("Content-Disposition", disposition+"; filename="+strconv.Quote(name))
-	c.File(path)
+	c.Data(http.StatusOK, mime, content)
 }
 
 func ptr[T any](v T) *T { return &v }

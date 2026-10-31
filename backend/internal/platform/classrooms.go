@@ -276,7 +276,7 @@ func (s *Service) AddMaterial(c *gin.Context, classroomID string) (string, error
 	}
 	var key, name, mime any
 	if f != nil {
-		if err := s.saveFile(f, content); err != nil {
+		if err := s.saveFile(ctx, f, content); err != nil {
 			return "", err
 		}
 		key, name, mime = f.Key, f.Name, f.Mime
@@ -285,7 +285,7 @@ func (s *Service) AddMaterial(c *gin.Context, classroomID string) (string, error
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO classroom_materials (id, classroom_id, author_id, title, body, link_url, file_key, file_name, file_mime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, classroomID, uid(c), title, nullable(c.PostForm("body")), nullable(link), key, name, mime); err != nil {
 		if f != nil {
-			s.removeFile(f.Key)
+			s.removeFile(ctx, f.Key)
 		}
 		return "", err
 	}
@@ -375,7 +375,7 @@ func (s *Service) Submit(c *gin.Context, assignmentID string) error {
 	}
 	var key, name, mime any
 	if f != nil {
-		if err := s.saveFile(f, content); err != nil {
+		if err := s.saveFile(ctx, f, content); err != nil {
 			return err
 		}
 		key, name, mime = f.Key, f.Name, f.Mime
@@ -385,12 +385,12 @@ func (s *Service) Submit(c *gin.Context, assignmentID string) error {
 		newID(), assignmentID, uid(c), nullable(note), key, name, mime)
 	if err != nil {
 		if f != nil {
-			s.removeFile(f.Key)
+			s.removeFile(ctx, f.Key)
 		}
 		return err
 	}
 	if f != nil && prev.Key.Valid {
-		s.removeFile(prev.Key.String)
+		s.removeFile(ctx, prev.Key.String)
 	}
 	var owner string
 	_ = s.db.GetContext(ctx, &owner, `SELECT owner_id FROM classrooms WHERE id = ?`, classroom)

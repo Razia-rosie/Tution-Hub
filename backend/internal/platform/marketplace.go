@@ -503,18 +503,18 @@ func (s *Service) SetPhoto(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if err := s.saveFile(f, content); err != nil {
+	if err := s.saveFile(c.Request.Context(), f, content); err != nil {
 		fail(c, err)
 		return
 	}
 	var previous sql.NullString
 	_ = s.db.GetContext(c.Request.Context(), &previous, `SELECT photo_key FROM role_profiles WHERE user_id = ?`, uid(c))
 	if _, err := s.db.ExecContext(c.Request.Context(), `INSERT INTO role_profiles (user_id, photo_key, photo_mime) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE photo_key = VALUES(photo_key), photo_mime = VALUES(photo_mime)`, uid(c), f.Key, f.Mime); err != nil {
-		s.removeFile(f.Key)
+		s.removeFile(c.Request.Context(), f.Key)
 		fail(c, err)
 		return
 	}
-	s.removeFile(previous.String)
+	s.removeFile(c.Request.Context(), previous.String)
 	c.Status(http.StatusNoContent)
 }
 

@@ -20,6 +20,16 @@ type Config struct {
 	RefreshReuseGrace time.Duration
 	SecureCookie      bool
 	DocumentDir       string
+	// FileStorage is "disk" (files under DocumentDir) or "database" (for hosts
+	// without a persistent filesystem).
+	FileStorage string
+	// MaxUploadBytes caps each uploaded file. Serverless hosts limit request
+	// bodies (Vercel: 4.5 MB), so set MAX_UPLOAD_MB below that there.
+	MaxUploadBytes int
+	// ClientIPHeader names a header set by the hosting platform's edge that holds
+	// the real client address (for example X-Real-IP on Vercel). Only set it when
+	// every request passes through that platform, since clients can send it too.
+	ClientIPHeader string
 	// Abuse limits: failed logins per email+IP and per IP in 15 minutes, and
 	// account-creation or token-request calls per IP per hour.
 	LoginLimitPerAccount int
@@ -38,7 +48,7 @@ type Config struct {
 func Load() (Config, error) {
 	c := Config{
 		Environment:          get("APP_ENV", "development"),
-		HTTPAddr:             get("HTTP_ADDR", ":8080"),
+		HTTPAddr:             httpAddr(),
 		DatabaseURL:          os.Getenv("DATABASE_URL"),
 		JWTSecret:            os.Getenv("JWT_SECRET"),
 		AccessTokenTTL:       parseDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
@@ -46,6 +56,9 @@ func Load() (Config, error) {
 		RefreshReuseGrace:    parseDuration("REFRESH_REUSE_GRACE", 20*time.Second),
 		SecureCookie:         os.Getenv("COOKIE_SECURE") == "true",
 		DocumentDir:          get("DOCUMENT_DIR", "private_documents"),
+		FileStorage:          get("FILE_STORAGE", "disk"),
+		MaxUploadBytes:       parseInt("MAX_UPLOAD_MB", 10) << 20,
+		ClientIPHeader:       os.Getenv("CLIENT_IP_HEADER"),
 		LoginLimitPerAccount: parseInt("LOGIN_LIMIT_PER_ACCOUNT", 5),
 		LoginLimitPerIP:      parseInt("LOGIN_LIMIT_PER_IP", 50),
 		SignupLimitPerIP:     parseInt("SIGNUP_LIMIT_PER_IP", 20),
@@ -61,6 +74,17 @@ func Load() (Config, error) {
 		return Config{}, errors.New("DATABASE_URL is required and JWT_SECRET must be at least 32 characters")
 	}
 	return c, nil
+}
+
+// httpAddr prefers HTTP_ADDR, then PORT (set by platforms such as Vercel).
+func httpAddr() string {
+	if addr := os.Getenv("HTTP_ADDR"); addr != "" {
+		return addr
+	}
+	if port := os.Getenv("PORT"); port != "" {
+		return ":" + port
+	}
+	return ":8080"
 }
 
 func get(key, fallback string) string {

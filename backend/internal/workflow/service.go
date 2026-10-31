@@ -8,13 +8,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	"github.com/tuitionhub/backend/internal/filestore"
 )
 
 var (
@@ -25,12 +26,12 @@ var (
 )
 
 type Service struct {
-	db          *sqlx.DB
-	documentDir string
+	db    *sqlx.DB
+	files filestore.Store
 }
 
-func NewService(db *sqlx.DB, documentDir string) *Service {
-	return &Service{db: db, documentDir: documentDir}
+func NewService(db *sqlx.DB, files filestore.Store) *Service {
+	return &Service{db: db, files: files}
 }
 
 type Profile struct {
@@ -464,8 +465,9 @@ func (s *Service) GetDocument(ctx context.Context, documentID string) (StoredDoc
 	return document, err
 }
 
-func (s *Service) DocumentPath(key string) string {
-	return filepath.Join(s.documentDir, filepath.Base(key))
+// DocumentContent loads a stored verification picture.
+func (s *Service) DocumentContent(ctx context.Context, key string) ([]byte, error) {
+	return s.files.Get(ctx, key)
 }
 
 func (s *Service) CreateInterview(ctx context.Context, reviewerID, applicationID, mode, scheduledAt, location string) error {
@@ -638,17 +640,13 @@ func (s *Service) SaveDocument(ctx context.Context, ownerID, requestedApplicatio
 	if !editableApplication(application.Status) {
 		return Document{}, ErrConflict
 	}
-	if err := os.MkdirAll(s.documentDir, 0700); err != nil {
-		return Document{}, err
-	}
 	var previousKey string
 	err = s.db.GetContext(ctx, &previousKey, `SELECT storage_key FROM verification_documents WHERE application_id = ? AND document_type = ?`, application.ID, documentType)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Document{}, err
 	}
 	key := uuid.NewString()
-	path := filepath.Join(s.documentDir, key)
-	if err := os.WriteFile(path, content, 0600); err != nil {
+	if err := s.files.Put(ctx, key, mime, content); err != nil {
 		return Document{}, err
 	}
 	digest := sha256.Sum256(content)
@@ -658,12 +656,12 @@ func (s *Service) SaveDocument(ctx context.Context, ownerID, requestedApplicatio
 	}
 	_, err = s.db.ExecContext(ctx, `INSERT INTO verification_documents (id, application_id, document_type, storage_key, original_name, mime_type, byte_size, sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE storage_key = VALUES(storage_key), original_name = VALUES(original_name), mime_type = VALUES(mime_type), byte_size = VALUES(byte_size), sha256 = VALUES(sha256), uploaded_at = UTC_TIMESTAMP(6)`, uuid.NewString(), application.ID, documentType, key, name, mime, len(content), hex.EncodeToString(digest[:]))
 	if err != nil {
-		_ = os.Remove(path)
+		s.files.Delete(ctx, key)
 		return Document{}, err
 	}
-	// A re-upload replaces the row, so the superseded file would otherwise be orphaned on disk.
+	// A re-upload replaces the row, so the superseded file would otherwise be orphaned.
 	if previousKey != "" {
-		_ = os.Remove(s.DocumentPath(previousKey))
+		s.files.Delete(ctx, previousKey)
 	}
 	_, _ = s.db.ExecContext(ctx, `INSERT INTO audit_logs (id, actor_id, subject_user_id, action, metadata) VALUES (?, ?, ?, 'document_uploaded', JSON_OBJECT('application_id', ?, 'document_type', ?, 'replaced', ?))`, uuid.NewString(), ownerID, ownerID, application.ID, documentType, previousKey != "")
 	var doc Document

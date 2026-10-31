@@ -8,6 +8,8 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
+
+	"github.com/tuitionhub/backend/internal/filestore"
 )
 
 func TestSubmitVerificationRefusesNonVerifiableRole(t *testing.T) {
@@ -51,7 +53,7 @@ func testWorkflowService(t *testing.T) (*Service, sqlmock.Sqlmock, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewService(sqlx.NewDb(db, "sqlmock"), t.TempDir()), mock, func() { _ = db.Close() }
+	return NewService(sqlx.NewDb(db, "sqlmock"), filestore.Disk{Dir: t.TempDir()}), mock, func() { _ = db.Close() }
 }
 
 func TestDecisionAccountStatus(t *testing.T) {

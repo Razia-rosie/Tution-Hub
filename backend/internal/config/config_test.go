@@ -49,3 +49,24 @@ func TestLoadRejectsWeakSecret(t *testing.T) {
 		t.Fatal("expected an error for a short JWT secret")
 	}
 }
+
+func TestLoadHostingSettings(t *testing.T) {
+	t.Setenv("DATABASE_URL", "user:pass@tcp(localhost:3306)/db")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	cfg, _ := Load()
+	if cfg.HTTPAddr != ":8080" || cfg.FileStorage != "disk" || cfg.MaxUploadBytes != 10<<20 || cfg.ClientIPHeader != "" {
+		t.Fatalf("unexpected hosting defaults: %+v", cfg)
+	}
+	t.Setenv("PORT", "3000")
+	t.Setenv("FILE_STORAGE", "database")
+	t.Setenv("MAX_UPLOAD_MB", "4")
+	t.Setenv("CLIENT_IP_HEADER", "X-Real-IP")
+	cfg, _ = Load()
+	if cfg.HTTPAddr != ":3000" || cfg.FileStorage != "database" || cfg.MaxUploadBytes != 4<<20 || cfg.ClientIPHeader != "X-Real-IP" {
+		t.Fatalf("hosting overrides not applied: %+v", cfg)
+	}
+	t.Setenv("HTTP_ADDR", ":9090")
+	if cfg, _ = Load(); cfg.HTTPAddr != ":9090" {
+		t.Fatalf("HTTP_ADDR should win over PORT: %s", cfg.HTTPAddr)
+	}
+}

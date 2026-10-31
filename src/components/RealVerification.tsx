@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Clock, ImageUp, ShieldCheck, XCircle } fro
 import { useStore, type VerifyState } from '../lib/store'
 import { Button, Card, Field, Input, StatusChip } from './ui'
 import { PageHead } from './tutor/bits'
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from '../lib/uploads'
 import { ApiError, effectiveStatus, fetchPrivateDocument, getWorkflowDashboard, submitVerification, updateProfile, uploadVerificationDocument, type DocumentRequirement, type WorkflowDashboard } from '../lib/api'
 
 type Role = 'tutor' | 'coaching'
@@ -22,7 +23,6 @@ const COPY: Record<Role, { tag: string; heading: string; education: [string, str
 }
 
 const ACCEPT = ['image/jpeg', 'image/png', 'image/webp']
-const MAX_BYTES = 10 * 1024 * 1024
 const list = (value: string) => value.split(',').map((x) => x.trim()).filter(Boolean)
 const joined = (value: unknown) => (Array.isArray(value) ? value.join(', ') : '')
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback)
@@ -84,7 +84,7 @@ export default function RealVerification({ role }: { role: Role }) {
     if (!file) return
     setError('')
     if (!ACCEPT.includes(file.type)) { setError('Please choose a JPG, PNG or WebP picture. PDF and Word files are not accepted.'); return }
-    if (file.size > MAX_BYTES) { setError('Pictures must be 10 MB or smaller.'); return }
+    if (file.size > MAX_UPLOAD_BYTES) { setError(`Pictures must be ${MAX_UPLOAD_MB} MB or smaller.`); return }
     setUploading(req.type)
     try {
       await uploadVerificationDocument(req.type, file)
@@ -140,7 +140,7 @@ export default function RealVerification({ role }: { role: Role }) {
 
       <Card>
         <h2 className="text-lg">2. Verification pictures</h2>
-        <p className="mt-1 text-sm text-gray-600">Take clear photos of the original documents. JPG, PNG or WebP, up to 10 MB each. Only you and TuitionHub administrators can see them.</p>
+        <p className="mt-1 text-sm text-gray-600">Take clear photos of the original documents. JPG, PNG or WebP, up to {MAX_UPLOAD_MB} MB each. Only you and TuitionHub administrators can see them.</p>
         <ul className="mt-4 grid gap-4 md:grid-cols-2">
           {requirements.map((req) => {
             const doc = uploaded.get(req.type)

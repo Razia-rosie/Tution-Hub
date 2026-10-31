@@ -34,6 +34,7 @@ import (
 
 	"github.com/tuitionhub/backend/internal/auth"
 	"github.com/tuitionhub/backend/internal/config"
+	"github.com/tuitionhub/backend/internal/filestore"
 	"github.com/tuitionhub/backend/internal/workflow"
 )
 
@@ -66,7 +67,7 @@ func setup(t *testing.T) *env {
 	r := gin.New()
 	authService := auth.NewService(db, cfg)
 	auth.RegisterRoutes(r.Group("/api/v1"), authService)
-	workflow.RegisterRoutes(r.Group("/api/v1"), authService, workflow.NewService(db, docDir))
+	workflow.RegisterRoutes(r.Group("/api/v1"), authService, workflow.NewService(db, filestore.Disk{Dir: docDir}))
 	return &env{t: t, db: db, router: r, docDir: docDir, run: fmt.Sprintf("%d", rand.Int63())}
 }
 
