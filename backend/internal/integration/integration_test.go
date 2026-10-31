@@ -29,6 +29,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-sql-driver/mysql"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/tuitionhub/backend/internal/auth"
@@ -122,6 +123,16 @@ func (e *env) register(label, role string) account {
 	r := e.do("POST", "/api/v1/auth/register", "", map[string]string{"name": "IT " + label, "email": email, "password": "integration-pass-1", "role": role})
 	if r.Code != http.StatusCreated {
 		e.t.Fatalf("register %s: %d %v", label, r.Code, r.Body)
+	}
+	tokens := r.Body["tokens"].(map[string]any)
+	return account{id: r.Body["user"].(map[string]any)["id"].(string), access: tokens["access_token"].(string), refresh: tokens["refresh_token"].(string), email: email}
+}
+
+func (e *env) login(email, password string) account {
+	e.t.Helper()
+	r := e.do("POST", "/api/v1/auth/login", "", map[string]string{"email": email, "password": password})
+	if r.Code != http.StatusOK {
+		e.t.Fatalf("login %s: %d %v", email, r.Code, r.Body)
 	}
 	tokens := r.Body["tokens"].(map[string]any)
 	return account{id: r.Body["user"].(map[string]any)["id"].(string), access: tokens["access_token"].(string), refresh: tokens["refresh_token"].(string), email: email}
@@ -236,6 +247,7 @@ func TestGlobalIntegrityInvariants(t *testing.T) {
 		"documents whose application is missing":                                           `SELECT COUNT(*) FROM verification_documents d LEFT JOIN verification_applications v ON v.id = d.application_id WHERE v.id IS NULL`,
 		"suspended users with live refresh sessions":                                       `SELECT COUNT(*) FROM refresh_tokens t JOIN users u ON u.id = t.user_id WHERE u.account_status = 'suspended' AND t.revoked_at IS NULL AND t.expires_at > UTC_TIMESTAMP(6)`,
 		"approved applications whose account is not active, suspended or awaiting profile": `SELECT COUNT(*) FROM verification_applications v JOIN users u ON u.id = v.user_id WHERE v.status = 'approved' AND u.account_status NOT IN ('active','suspended','profile_incomplete')`,
+		"refresh tokens without a session":                                                 `SELECT COUNT(*) FROM refresh_tokens WHERE session_id IS NULL`,
 		"documents with malformed hashes":                                                  `SELECT COUNT(*) FROM verification_documents WHERE sha256 NOT REGEXP '^[0-9a-f]{64}$'`,
 	}
 	for name, query := range checks {
@@ -280,6 +292,79 @@ func TestSecurityControls(t *testing.T) {
 		}
 		if r := e.do("POST", "/api/v1/auth/refresh", "", map[string]string{"refresh_token": fresh}); r.Code != http.StatusUnauthorized {
 			t.Fatalf("token issued before the replay should be revoked, got %d", r.Code)
+		}
+	})
+
+	// DEF-02: access tokens are bound to their session, so ending the session
+	// rejects them immediately instead of after the 15-minute expiry.
+	t.Run("logout rejects the session's access token at once", func(t *testing.T) {
+		u := e.register("logout", "parent")
+		other := e.login(u.email, "integration-pass-1")
+		if r := e.do("GET", "/api/v1/auth/me", u.access, nil); r.Code != http.StatusOK {
+			t.Fatalf("token before logout: want 200, got %d", r.Code)
+		}
+		if r := e.do("POST", "/api/v1/auth/logout", "", map[string]string{"refresh_token": u.refresh}); r.Code != http.StatusNoContent {
+			t.Fatalf("logout: %d %v", r.Code, r.Body)
+		}
+		for _, path := range []string{"/api/v1/auth/me", "/api/v1/workflow/dashboard"} {
+			if r := e.do("GET", path, u.access, nil); r.Code != http.StatusUnauthorized {
+				t.Fatalf("%s with logged-out token: want 401, got %d", path, r.Code)
+			}
+		}
+		if r := e.do("POST", "/api/v1/auth/refresh", "", map[string]string{"refresh_token": u.refresh}); r.Code != http.StatusUnauthorized {
+			t.Fatalf("refresh after logout: want 401, got %d", r.Code)
+		}
+		if r := e.do("GET", "/api/v1/auth/me", other.access, nil); r.Code != http.StatusOK {
+			t.Fatalf("logout must not end the account's other sessions, got %d", r.Code)
+		}
+		again := e.login(u.email, "integration-pass-1")
+		if r := e.do("GET", "/api/v1/workflow/dashboard", again.access, nil); r.Code != http.StatusOK {
+			t.Fatalf("token from a new login: want 200, got %d", r.Code)
+		}
+	})
+
+	t.Run("password reset rejects every earlier access token", func(t *testing.T) {
+		u := e.register("reset", "student")
+		other := e.login(u.email, "integration-pass-1")
+		forgot := e.do("POST", "/api/v1/auth/forgot-password", "", map[string]string{"email": u.email})
+		resetToken, _ := forgot.Body["development_token"].(string)
+		if forgot.Code != http.StatusAccepted || resetToken == "" {
+			t.Fatalf("forgot-password: %d %v", forgot.Code, forgot.Body)
+		}
+		if r := e.do("POST", "/api/v1/auth/reset-password", "", map[string]string{"token": resetToken, "new_password": "integration-pass-2"}); r.Code != http.StatusOK {
+			t.Fatalf("reset: %d %v", r.Code, r.Body)
+		}
+		for _, token := range []string{u.access, other.access} {
+			if r := e.do("GET", "/api/v1/workflow/dashboard", token, nil); r.Code != http.StatusUnauthorized {
+				t.Fatalf("token issued before the reset: want 401, got %d", r.Code)
+			}
+		}
+		fresh := e.login(u.email, "integration-pass-2")
+		if r := e.do("GET", "/api/v1/auth/me", fresh.access, nil); r.Code != http.StatusOK {
+			t.Fatalf("token after login with the new password: want 200, got %d", r.Code)
+		}
+	})
+
+	t.Run("refresh keeps the session alive", func(t *testing.T) {
+		u := e.register("rotate", "parent")
+		r := e.do("POST", "/api/v1/auth/refresh", "", map[string]string{"refresh_token": u.refresh})
+		if r.Code != http.StatusOK {
+			t.Fatalf("refresh: %d", r.Code)
+		}
+		rotated := r.Body["tokens"].(map[string]any)["access_token"].(string)
+		for _, token := range []string{u.access, rotated} {
+			if r := e.do("GET", "/api/v1/auth/me", token, nil); r.Code != http.StatusOK {
+				t.Fatalf("rotation must not end the session, got %d", r.Code)
+			}
+		}
+	})
+
+	t.Run("access tokens without a session are refused", func(t *testing.T) {
+		u := e.register("nosid", "parent")
+		claims := jwt.MapClaims{"sub": u.id, "role": "parent", "iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix()}
+		legacy, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(strings.Repeat("i", 40)))
+		if r := e.do("GET", "/api/v1/auth/me", legacy, nil); r.Code != http.StatusUnauthorized {
+			t.Fatalf("token without sid: want 401, got %d", r.Code)
 		}
 	})
 
