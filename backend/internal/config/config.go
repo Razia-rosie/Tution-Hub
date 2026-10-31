@@ -28,6 +28,11 @@ type Config struct {
 	// TrustedProxies lists proxy addresses whose X-Forwarded-For is believed.
 	// Empty means the direct peer address is used, so the header cannot be spoofed.
 	TrustedProxies []string
+	// Database pool. database/sql keeps only 2 idle connections by default, so
+	// concurrent traffic opens and closes connections until local ports run out.
+	DBMaxOpenConns    int
+	DBMaxIdleConns    int
+	DBConnMaxLifetime time.Duration
 }
 
 func Load() (Config, error) {
@@ -45,6 +50,12 @@ func Load() (Config, error) {
 		LoginLimitPerIP:      parseInt("LOGIN_LIMIT_PER_IP", 50),
 		SignupLimitPerIP:     parseInt("SIGNUP_LIMIT_PER_IP", 20),
 		TrustedProxies:       splitList(os.Getenv("TRUSTED_PROXIES")),
+		DBMaxOpenConns:       parseInt("DB_MAX_OPEN_CONNS", 25),
+		DBConnMaxLifetime:    parseDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
+	}
+	c.DBMaxIdleConns = parseInt("DB_MAX_IDLE_CONNS", c.DBMaxOpenConns)
+	if c.DBMaxIdleConns > c.DBMaxOpenConns {
+		c.DBMaxIdleConns = c.DBMaxOpenConns
 	}
 	if c.DatabaseURL == "" || len(c.JWTSecret) < 32 {
 		return Config{}, errors.New("DATABASE_URL is required and JWT_SECRET must be at least 32 characters")

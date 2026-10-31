@@ -7,6 +7,14 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// ConfigurePool bounds the connection pool and keeps connections open for reuse
+// instead of dialling MySQL for most queries.
+func ConfigurePool(db *sqlx.DB, maxOpen, maxIdle int, maxLifetime time.Duration) {
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
+	db.SetConnMaxLifetime(maxLifetime)
+}
+
 func WaitForConnection(db *sqlx.DB, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()

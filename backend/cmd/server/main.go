@@ -34,6 +34,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+	database.ConfigurePool(db, cfg.DBMaxOpenConns, cfg.DBMaxIdleConns, cfg.DBConnMaxLifetime)
 	if err := database.WaitForConnection(db, 30*time.Second); err != nil {
 		slog.Error("database unavailable", "error", err)
 		os.Exit(1)

@@ -62,6 +62,9 @@ does not read `.env` files itself).
 | `SIGNUP_LIMIT_PER_IP` | `20` | Register / reset / verify-email calls per IP per hour |
 | `TRUSTED_PROXIES` | empty | Comma-separated proxies allowed to set `X-Forwarded-For` |
 | `REFRESH_REUSE_GRACE` | `20s` | Window in which a just-rotated refresh token may be reused |
+| `DB_MAX_OPEN_CONNS` | `25` | Maximum open MySQL connections per API process (keep below MySQL `max_connections`) |
+| `DB_MAX_IDLE_CONNS` | same as `DB_MAX_OPEN_CONNS` | Connections kept open for reuse (capped at the open limit) |
+| `DB_CONN_MAX_LIFETIME` | `5m` | Connections are recycled after this age |
 
 Frontend: `API_PROXY_TARGET` (Vite proxy target, default `http://localhost:8080`) and `PORT`.
 

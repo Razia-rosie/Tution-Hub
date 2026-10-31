@@ -12,6 +12,10 @@ All notable changes to TuitionHub. Dates are 2026; commit hashes refer to this r
   security, testing, deployment, known issues), CONTRIBUTING and SECURITY policies.
 
 ### Fixed
+- The API now configures its MySQL connection pool (`DB_MAX_OPEN_CONNS`, `DB_MAX_IDLE_CONNS`,
+  `DB_CONN_MAX_LIFETIME`; defaults 25 / 25 / 5m). With the `database/sql` default of 2 idle
+  connections, sustained concurrent traffic exhausted local ports and about 30% of public search
+  requests returned HTTP 500 (test report DEF-01).
 - `backend/.env.example` is now tracked (the `.env*` ignore rule had excluded it) and lists the
   rate-limit, trusted-proxy and refresh-grace settings. `.claude/` local tool configuration is
   ignored. (`e2c3cbb`)
