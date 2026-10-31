@@ -1,0 +1,122 @@
+PASS auth: tutor registers as pending
+PASS auth: parents start active (no verification)
+PASS auth: duplicate email rejected
+PASS auth: cannot self-register as admin
+PASS auth: short password rejected
+PASS auth: wrong password rejected
+PASS auth: unknown email gives the same 401
+PASS auth: /me without token is 401
+PASS auth: /me with garbage token is 401
+PASS auth: workflow without token is 401
+PASS auth: refresh rotates tokens
+PASS cookie mode: refresh token not in the JSON body
+PASS cookie mode: cookie is HttpOnly, SameSite=Strict, scoped to auth
+PASS cookie mode: refresh from cookie rotates it
+PASS cookie mode: cookie without the header is refused (CSRF guard)
+PASS cookie mode: logout clears the cookie
+PASS cookie mode: revoked cookie cannot refresh
+PASS auth: 6th failed login for one account is 429
+PASS auth: correct password refused during lockout
+PASS auth: lockout is per account, not global
+PASS tutor: dashboard before anything
+PASS tutor: requirements list identity (required) and education (optional)
+PASS tutor: empty submit is 422 with what is missing
+PASS tutor: tuition blocked until verified
+PASS tutor: admin endpoints forbidden
+PASS tutor: unknown profile field rejected
+PASS pictures: PNG accepted and draft created
+PASS pictures: application is a draft with 1 picture
+PASS pictures: WebP accepted
+PASS pictures: text named .png rejected
+PASS pictures: SVG rejected
+PASS pictures: PDF rejected
+PASS pictures: Word document rejected
+PASS pictures: GIF rejected
+PASS pictures: WebP header with no image rejected
+PASS pictures: truncated PNG rejected
+PASS pictures: JPEG header + junk rejected
+PASS pictures: file over 10 MB rejected
+PASS pictures: document type of another role rejected
+PASS pictures: large 3000x2000 photo accepted
+PASS pictures: replacing a picture keeps one per type
+PASS tutor: submit without profile is 422 naming the profile
+PASS tutor: profile saved
+PASS tutor: profile returned for prefill
+PASS tutor: submit accepted -> pending
+PASS tutor: pictures frozen while pending
+PASS tutor: profile frozen while pending
+PASS tutor: cannot submit twice
+PASS coaching: registers as pending
+PASS coaching: tutor document type rejected
+PASS coaching: trade licence accepted
+PASS coaching: submit without owner ID is 422
+PASS coaching: owner ID accepted
+PASS coaching: submit accepted
+PASS pictures: cannot upload into another user's application
+PASS student: starts active
+PASS student: cannot upload verification pictures
+PASS student: cannot submit verification
+PASS parent: cannot submit verification
+PASS admin: login
+PASS admin: pending queue has tutor and coaching
+PASS admin: unsubmitted drafts are not listed
+PASS admin: row has profile, counts and dates
+PASS admin: role filter
+PASS admin: latest identity picture listed
+PASS documents: admin preview returns the exact bytes
+PASS documents: served private, no-store, nosniff, sandboxed
+PASS documents: owner can view own picture
+PASS documents: other users get 404
+PASS documents: anonymous gets 401
+PASS review: reject without a real reason is 400
+PASS review: unknown decision is 400
+PASS review: unknown application is 404
+PASS review: tutors cannot decide
+PASS review: reject coaching
+PASS review: decided application cannot be decided again
+PASS coaching: sees rejection and reason
+PASS coaching: rejection is final (no resubmit)
+PASS coaching: no picture changes after rejection
+PASS coaching: rejection notification
+PASS review: request corrections from tutor
+PASS tutor: sees correction request
+PASS tutor: can replace pictures during corrections
+PASS tutor: can edit details during corrections
+PASS tutor: resubmits -> pending again
+PASS admin: resubmission visible with count 2
+PASS interview: past date rejected
+PASS interview: cannot schedule on rejected application
+PASS interview: scheduled
+PASS interview: listed with ISO date
+PASS interview: completed
+PASS review: approve tutor
+PASS tutor: approved -> active
+PASS tutor: restricted feature unlocked
+PASS tutor: approved cannot resubmit
+PASS tutor: pictures locked after approval
+PASS history: full trail in order
+PASS history: admin picture views are audited
+PASS audit: decisions listed with actor and subject
+PASS notifications: corrections, interview, approval
+PASS notifications: mark one read
+PASS notifications: cannot mark someone else's
+PASS notifications: mark all read
+PASS admin: stats
+PASS admin: user search by run id and role
+PASS admin: suspension needs a reason
+PASS admin: suspend student
+PASS suspended: existing token blocked at once
+PASS suspended: refresh blocked
+PASS suspended: login refused with 403
+PASS admin: reactivate student
+PASS reactivated: can sign in, status restored
+PASS admin: cannot suspend an administrator
+PASS relationship: parent links student
+PASS relationship: tutor cannot link student
+PASS auth: logout
+PASS auth: refresh after logout is 401
+PASS auth: replay within the grace window gets a fresh session (navigation race)
+PASS auth: replaying a rotated refresh token revokes the newer one too
+
+run i4sgm3: 119 pass, 0 fail
+EXIT 0

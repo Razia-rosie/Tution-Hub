@@ -1,0 +1,9 @@
+	github.com/tuitionhub/backend/cmd/bootstrap-admin		coverage: 0.0% of statements
+	github.com/tuitionhub/backend/cmd/migrate		coverage: 0.0% of statements
+	github.com/tuitionhub/backend/cmd/server		coverage: 0.0% of statements
+ok  	github.com/tuitionhub/backend/internal/auth	1.030s	coverage: 9.1% of statements
+ok  	github.com/tuitionhub/backend/internal/config	1.343s	coverage: 88.9% of statements
+	github.com/tuitionhub/backend/internal/database		coverage: 0.0% of statements
+	github.com/tuitionhub/backend/internal/platform		coverage: 0.0% of statements
+ok  	github.com/tuitionhub/backend/internal/ratelimit	1.852s	coverage: 83.9% of statements
+ok  	github.com/tuitionhub/backend/internal/workflow	2.504s	coverage: 8.7% of statements

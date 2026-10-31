@@ -1,0 +1,425 @@
+{
+  "api": "http://localhost:8090",
+  "run": "nox3fs",
+  "at": "2026-10-31T06:34:39.677Z",
+  "emails": {
+    "parent": "qa-parent-nox3fs@tuitionhub.test",
+    "student": "qa-student-nox3fs@tuitionhub.test",
+    "tutor": "qa-tutor-nox3fs@tuitionhub.test"
+  },
+  "results": [
+    {
+      "id": "MP-AUTH-01",
+      "title": "Register rejects 7-char password (min 8)",
+      "expected": "400",
+      "actual": "400",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-AUTH-02",
+      "title": "Register accepts 8-char password (boundary)",
+      "expected": "201",
+      "actual": "201",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-AUTH-03",
+      "title": "Register rejects 73-char password (bcrypt max 72)",
+      "expected": "400",
+      "actual": "400",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-AUTH-04",
+      "title": "Register rejects 1-char name (min 2)",
+      "expected": "400",
+      "actual": "400",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-AUTH-05",
+      "title": "Register rejects malformed email",
+      "expected": "400",
+      "actual": "400",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-AUTH-06",
+      "title": "Register rejects missing required fields",
+      "expected": "400",
+      "actual": "400",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-AUTH-07",
+      "title": "Register rejects malformed JSON body",
+      "expected": "400",
+      "actual": "400",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-AUTH-08",
+      "title": "Self-registration as admin is refused",
+      "expected": "400 (no admin created)",
+      "actual": "400 role=-",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-AUTH-09",
+      "title": "Parent registration returns 201 + access token",
+      "expected": "201, token present",
+      "actual": "201, token=true",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-AUTH-10",
+      "title": "Duplicate email registration refused",
+      "expected": "409",
+      "actual": "409",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-AUTH-11",
+      "title": "Duplicate email in different letter case refused",
+      "expected": "409 (or 400)",
+      "actual": "409",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-AUTH-12",
+      "title": "Wrong password and unknown email give identical 401",
+      "expected": "401 / 401, same body",
+      "actual": "401 / 401, same=true",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-AUTH-13",
+      "title": "Valid login returns 200 and tokens",
+      "expected": "200",
+      "actual": "200",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-AUTH-14",
+      "title": "/auth/me without token",
+      "expected": "401",
+      "actual": "401",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-AUTH-15",
+      "title": "/auth/me with tampered JWT signature",
+      "expected": "401",
+      "actual": "401",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-AUTH-16",
+      "title": "/auth/me with valid token returns own profile, no password hash",
+      "expected": "200, no password_hash field",
+      "actual": "200, hasHash=false",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-SESS-01",
+      "title": "Cookie-mode login sets th_refresh HttpOnly SameSite=Strict on /api/v1/auth",
+      "expected": "HttpOnly; SameSite=Strict; Path=/api/v1/auth",
+      "actual": "th_refresh=<redacted>; Path=/api/v1/auth; Max-Age=2592000; HttpOnly; SameSite=Strict",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-SESS-02",
+      "title": "Cookie-mode login does not return refresh token in JSON body",
+      "expected": "no refresh_token in body",
+      "actual": "refresh_token present=false",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-SESS-03",
+      "title": "Cookie refresh without X-Session-Mode header (CSRF) refused",
+      "expected": "4xx",
+      "actual": "401",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-SESS-04",
+      "title": "Cookie refresh with header succeeds",
+      "expected": "200",
+      "actual": "200",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-SESS-05",
+      "title": "Cross-origin preflight gets no Access-Control-Allow-Origin",
+      "expected": "header absent",
+      "actual": "ACAO=absent",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-SESS-06",
+      "title": "Cookie logout succeeds and clears cookie",
+      "expected": "2xx, Max-Age<=0",
+      "actual": "204 true",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-RBAC-01",
+      "title": "Dashboard without authentication",
+      "expected": "401",
+      "actual": "401",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-RBAC-02",
+      "title": "Student calls admin platform API",
+      "expected": "403",
+      "actual": "403",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-RBAC-03",
+      "title": "Tutor calls admin verification queue",
+      "expected": "403",
+      "actual": "403",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-RBAC-04",
+      "title": "Parent calls coaching-only API",
+      "expected": "403",
+      "actual": "403",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-RBAC-05",
+      "title": "Parent submits verification (tutor/coaching only)",
+      "expected": "403 or 400",
+      "actual": "403",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-RBAC-06",
+      "title": "Unverified (pending) tutor blocked from active-only tuition feed",
+      "expected": "403",
+      "actual": "403",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-RBAC-07",
+      "title": "Unverified tutor cannot apply to tuition",
+      "expected": "403 or 404",
+      "actual": "403",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-IDOR-01",
+      "title": "Non-existent verification document ID",
+      "expected": "404",
+      "actual": "404",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-IDOR-02",
+      "title": "Malformed classroom ID",
+      "expected": "404 (or 400)",
+      "actual": "404",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-IDOR-03",
+      "title": "Messages of a conversation the caller is not in",
+      "expected": "404 (or 403)",
+      "actual": "404",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-UPL-01",
+      "title": "Tutor uploads a real PNG verification picture",
+      "expected": "201 (or 200) with id",
+      "actual": "201 id=true",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-IDOR-04",
+      "title": "Another tutor requests the first tutor's verification picture",
+      "expected": "404 (or 403)",
+      "actual": "404",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-IDOR-05",
+      "title": "Anonymous request for a verification picture",
+      "expected": "401",
+      "actual": "401",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-UPL-02",
+      "title": "Owner fetches own picture with private, no-store, nosniff, sandbox CSP",
+      "expected": "Cache-Control private,no-store; nosniff; CSP sandbox",
+      "actual": "200 cc=private, no-store xcto=nosniff csp=default-src 'none'; img-src 'self'; sandbox",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-UPL-03",
+      "title": "Text file disguised as .png (image/png) rejected",
+      "expected": "400/415/422",
+      "actual": "400",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-UPL-04",
+      "title": "11 MB upload rejected (limit 10 MB)",
+      "expected": "400/413",
+      "actual": "400",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-UPL-05",
+      "title": "Student (non-verifiable role) uploads verification picture",
+      "expected": "403 (or 400)",
+      "actual": "403",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-INJ-01",
+      "title": "SQL metacharacters in public tutor search",
+      "expected": "200, no SQL error text",
+      "actual": "200 sqlError=false",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-INJ-02",
+      "title": "SQL injection string in login",
+      "expected": "400 or 401, not 200/500",
+      "actual": "400",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-INJ-03",
+      "title": "LIKE wildcards in search do not error",
+      "expected": "200",
+      "actual": "200",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-XSS-01",
+      "title": "Script tag in name stored as inert text (API returns JSON, not HTML)",
+      "expected": "201, content-type application/json",
+      "actual": "201 application/json; charset=utf-8",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-DATA-01",
+      "title": "Public tutor listing exposes no email or phone",
+      "expected": "no email/phone values",
+      "actual": "200 leak=false",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-DATA-02",
+      "title": "Public coaching listing exposes no email",
+      "expected": "no email values",
+      "actual": "200 leak=false",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-API-01",
+      "title": "Health endpoint",
+      "expected": "200 {\"status\":\"ok\"}",
+      "actual": "200 {\"status\":\"ok\"}",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-API-02",
+      "title": "Unknown route",
+      "expected": "404",
+      "actual": "404",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-API-03",
+      "title": "Public info endpoint returns JSON",
+      "expected": "200 JSON",
+      "actual": "200 application/json; charset=utf-8",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-PWR-01",
+      "title": "Forgot-password for existing account (dev server returns token instead of email)",
+      "expected": "202 with development_token",
+      "actual": "202 token=true",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-PWR-02",
+      "title": "Forgot-password for unknown email does not reveal existence",
+      "expected": "202, no token",
+      "actual": "202 token=false",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-PWR-03",
+      "title": "Reset with 5-char new password rejected",
+      "expected": "400",
+      "actual": "400",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-PWR-04",
+      "title": "Reset with valid token and new password",
+      "expected": "200",
+      "actual": "200",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-PWR-05",
+      "title": "Reset token is single-use",
+      "expected": "400 on reuse",
+      "actual": "400",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-PWR-06",
+      "title": "Old password refused, new password accepted after reset",
+      "expected": "401 / 200",
+      "actual": "401 / 200",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-PWR-07",
+      "title": "Refresh token issued before the reset is revoked (docs/security.md)",
+      "expected": "401",
+      "actual": "401",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-EV-01",
+      "title": "Email-verification request returns development token on dev server",
+      "expected": "202 with token",
+      "actual": "202 token=true",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-EV-02",
+      "title": "Verify email with invalid token",
+      "expected": "400",
+      "actual": "400",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-EV-03",
+      "title": "Verify email with valid token",
+      "expected": "200",
+      "actual": "200",
+      "status": "PASS"
+    },
+    {
+      "id": "MP-RL-01",
+      "title": "6th consecutive failed login is throttled",
+      "expected": "401 x5 then 429",
+      "actual": "401,401,401,401,401,429",
+      "status": "PASS"
+    }
+  ]
+}
