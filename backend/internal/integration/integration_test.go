@@ -238,6 +238,47 @@ func TestVerificationLifecyclePersistsConsistently(t *testing.T) {
 	}
 }
 
+// DEF-03: the name is trimmed before validation, so blank names are refused
+// instead of being stored empty, and surrounding whitespace is not stored.
+func TestRegistrationNormalizesNames(t *testing.T) {
+	e := setup(t)
+	reg := func(label, name string) resp {
+		email := fmt.Sprintf("it-name-%s-%s@tuitionhub.test", label, e.run)
+		return e.do("POST", "/api/v1/auth/register", "", map[string]string{"name": name, "email": email, "password": "integration-pass-1", "role": "parent"})
+	}
+	stored := func(label string) (string, bool) {
+		var name string
+		err := e.db.Get(&name, `SELECT name FROM users WHERE email = ?`, fmt.Sprintf("it-name-%s-%s@tuitionhub.test", label, e.run))
+		return name, err == nil
+	}
+	for label, name := range map[string]string{"blank": "     ", "tabs": "\t \n", "onechar": "  A  "} {
+		if r := reg(label, name); r.Code != http.StatusBadRequest {
+			t.Errorf("%s name: want 400, got %d %v", label, r.Code, r.Body)
+		}
+		if _, exists := stored(label); exists {
+			t.Errorf("%s name: an account was created", label)
+		}
+	}
+	if r := reg("padded", "   Nabila Islam  "); r.Code != http.StatusCreated {
+		t.Fatalf("padded name: want 201, got %d %v", r.Code, r.Body)
+	} else if got := r.Body["user"].(map[string]any)["name"]; got != "Nabila Islam" {
+		t.Errorf("padded name in response = %q", got)
+	}
+	if name, _ := stored("padded"); name != "Nabila Islam" {
+		t.Errorf("padded name stored as %q", name)
+	}
+	if r := reg("valid", "Rafi Hasan"); r.Code != http.StatusCreated {
+		t.Errorf("valid name: want 201, got %d", r.Code)
+	}
+	if name, _ := stored("valid"); name != "Rafi Hasan" {
+		t.Errorf("valid name stored as %q", name)
+	}
+	var empty int
+	if err := e.db.Get(&empty, `SELECT COUNT(*) FROM users WHERE email LIKE ? AND CHAR_LENGTH(TRIM(name)) < 2`, fmt.Sprintf("it-name-%%-%s@tuitionhub.test", e.run)); err != nil || empty != 0 {
+		t.Errorf("accounts with blank names created by this test: %d (%v)", empty, err)
+	}
+}
+
 func TestGlobalIntegrityInvariants(t *testing.T) {
 	e := setup(t)
 	checks := map[string]string{

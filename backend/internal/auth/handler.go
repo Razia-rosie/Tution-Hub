@@ -22,6 +22,11 @@ type registerRequest struct {
 	Role     string  `json:"role" validate:"omitempty,oneof=tutor student parent coaching"`
 	Phone    *string `json:"phone" validate:"omitempty,max=32"`
 }
+
+// normalize trims the name before validation, so whitespace does not count
+// towards the length rule and a blank name is rejected instead of stored empty.
+func (r *registerRequest) normalize() { r.Name = strings.TrimSpace(r.Name) }
+
 type loginRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required"`
@@ -369,8 +374,15 @@ func verifyEmail(s *Service) gin.HandlerFunc {
 	}
 }
 
+// normalizer is implemented by requests that clean their fields before validation.
+type normalizer interface{ normalize() }
+
 func bind(c *gin.Context, target interface{}) bool {
-	if err := c.ShouldBindJSON(target); err != nil || validate.Struct(target) != nil {
+	err := c.ShouldBindJSON(target)
+	if n, ok := target.(normalizer); ok && err == nil {
+		n.normalize()
+	}
+	if err != nil || validate.Struct(target) != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return false
 	}
