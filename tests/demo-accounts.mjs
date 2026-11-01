@@ -100,7 +100,10 @@ async function apiChecks() {
   const tanvir = (await GET('/api/v1/coaching/students', c1.token)).data.students.find((x) => x.name === 'Tanvir Alam')
   check('coaching1: enrol and remove a student from a batch', (await POST(`/api/v1/coaching/batches/${batchB.id}/enrollments/${tanvir.id}`, c1.token)).status === 204 && (await DEL(`/api/v1/coaching/batches/${batchB.id}/enrollments/${tanvir.id}`, c1.token)).status === 204)
   check('coaching1: exam published', (await GET('/api/v1/coaching/exams', c1.token)).data.exams.some((e) => e.published_at))
-  check('coaching1: fees for this month', (await GET(`/api/v1/coaching/fees?month=${new Date().toISOString().slice(0, 7)}`, c1.token)).data.fees.length >= 2)
+  // Fees are generated for the month the seed ran in, so look at this month and the previous one.
+  const monthOf = (offset) => { const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - offset); return d.toISOString().slice(0, 7) }
+  const feeCounts = await Promise.all([0, 1].map(async (o) => (await GET(`/api/v1/coaching/fees?month=${monthOf(o)}`, c1.token)).data.fees.length))
+  check('coaching1: monthly fees generated', feeCounts.some((n) => n >= 2), JSON.stringify(feeCounts))
   check('coaching1: public centre page', (await GET(`/api/v1/public/coaching/${c1.id}`)).status === 200)
 
   // ---------- coaching 2 (pending review) ----------
