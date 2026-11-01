@@ -10,7 +10,7 @@ Authenticated requests send `Authorization: Bearer <access token>`.
 
 Route registration: `backend/internal/auth/handler.go`, `backend/internal/workflow/handler.go`,
 `backend/internal/platform/routes.go`. All endpoints below are implemented and exercised by the
-API test suites ([testing.md](testing.md)).
+API test suites ([TESTING.md](TESTING.md)).
 
 ## Health
 

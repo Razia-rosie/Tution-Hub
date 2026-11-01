@@ -86,10 +86,12 @@ Required pictures:
 Submission is refused (422, with a `missing` list) until the required pictures
 and the profile (name, education/registration, subjects, classes, areas) exist.
 Pictures and profile are frozen from submission until corrections are
-requested. Uploads must be real JPEG, PNG or WebP images of at most 10 MB and
-40 megapixels: the bytes are sniffed and fully decoded, so renamed PDFs, Word
-files, SVGs, GIFs, truncated or header-only files are rejected. Pictures are
-stored outside the web root as `0600` files named by random UUIDs, served only
+requested. Uploads must be real JPEG, PNG or WebP images of at most
+`MAX_UPLOAD_MB` (10 MB by default, 4 MB on Vercel) and 40 megapixels: the bytes are sniffed and fully decoded, so renamed PDFs, Word
+files, SVGs, GIFs, truncated or header-only files are rejected. Pictures get
+random UUID keys and are stored outside the web root as `0600` files
+(`FILE_STORAGE=disk`) or in the `stored_files` table (`FILE_STORAGE=database`),
+served only
 to the owner and administrators (others get 404) with `Cache-Control: no-store`,
 `nosniff` and a sandboxing CSP. Every upload, admin view, decision, interview
 and suspension is written to `audit_logs`.
@@ -127,7 +129,8 @@ and administration live in `internal/platform` (routes in `routes.go`).
 `go run ./cmd/migrate` applies pending files from `migrations/` in order and
 records them in `schema_migrations`. Databases created before the tool are
 baselined (001/002 recorded without re-running). It refuses any file with
-DROP/TRUNCATE/DELETE, so it only ever adds. Back up first:
+DROP/TRUNCATE/DELETE, so it only ever adds, and it works on MySQL and TiDB
+(the `SELECT ... INTO @var` guards run as `SET @var = (SELECT ...)`). Back up first:
 
 ```sh
 docker compose exec -T mysql mysqldump -uroot -proot --single-transaction tuitionhub > backups/tuitionhub-$(date +%Y%m%d).sql
@@ -143,7 +146,10 @@ DATABASE_URL='...' go run ./cmd/migrate
 | `LOGIN_LIMIT_PER_IP` | 50 | failed logins per IP per 15 min |
 | `SIGNUP_LIMIT_PER_IP` | 20 | register / reset / verify-email calls per IP per hour |
 | `TRUSTED_PROXIES` | empty | comma-separated proxies allowed to set `X-Forwarded-For` |
-| `DOCUMENT_DIR` | `private_documents` | picture storage, outside the web root |
+| `DOCUMENT_DIR` | `private_documents` | picture storage, outside the web root (`FILE_STORAGE=disk`) |
+| `FILE_STORAGE` | `disk` | `disk` or `database` (`stored_files` table) |
+| `MAX_UPLOAD_MB` | `10` | per-file upload limit |
+| `CLIENT_IP_HEADER` | empty | client-IP header set by the hosting edge (`X-Real-IP` on Vercel) |
 | `COOKIE_SECURE` | `false` | set `true` behind HTTPS so the session cookie is Secure |
 | `REFRESH_REUSE_GRACE` | `20s` | how long a just-rotated refresh token may be presented again (navigation / multi-tab races) before reuse is treated as theft |
 

@@ -1,6 +1,10 @@
+> **Historical document.** Handoff notes written on 31 Oct 2026, before the deployment and the
+> documentation reorganisation. Some statements are out of date (for example the deployment status
+> and user counts). Current documentation: [docs/README.md](../README.md).
+
 # TuitionHub — progress
 
-Status as of **2026-10-31**. Documentation index: [`docs/README.md`](docs/README.md);
+Status as of **2026-10-31**. Documentation index: [`docs/README.md`](../README.md);
 condensed handoff: `PROJECT_HANDOFF.md`.
 
 ## Overview

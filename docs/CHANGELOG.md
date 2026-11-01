@@ -4,21 +4,59 @@ All notable changes to TuitionHub. Dates are 2026; commit hashes refer to this r
 
 ## Unreleased
 
-### Added
-- Development-only demo-account seed (`scripts/seed-demo.mjs`) and checks
-  (`tests/demo-accounts.mjs`); demo credentials are published in [docs/demo-accounts.md](docs/demo-accounts.md).
-- `make backend-dev` reads local overrides from the git-ignored `backend/.env.local`.
-- Project documentation: README, `docs/` (architecture, setup, API, database, workflows,
-  security, testing, deployment, known issues), CONTRIBUTING and SECURITY policies.
+### Docs
+- Repository documentation reorganised: new README with live links, screenshots and verified test
+  results; `docs/` renamed to PROJECT_OVERVIEW, FEATURES (with verification levels), ARCHITECTURE,
+  DATABASE (ER diagram), LOCAL_SETUP, DEPLOYMENT, TESTING, SECURITY, USER_GUIDE, ADMIN_GUIDE,
+  API_DOCUMENTATION, KNOWN_ISSUES, DEMO_ACCOUNTS; real screenshots in `docs/screenshots/`; the
+  31 Oct handoff notes moved to `docs/history/`; this changelog moved to `docs/`.
+- Root `.env.example` for the website build variables.
 
 ### Fixed
-- The API now configures its MySQL connection pool (`DB_MAX_OPEN_CONNS`, `DB_MAX_IDLE_CONNS`,
-  `DB_CONN_MAX_LIFETIME`; defaults 25 / 25 / 5m). With the `database/sql` default of 2 idle
-  connections, sustained concurrent traffic exhausted local ports and about 30% of public search
-  requests returned HTTP 500 (test report DEF-01).
-- `backend/.env.example` is now tracked (the `.env*` ignore rule had excluded it) and lists the
-  rate-limit, trusted-proxy and refresh-grace settings. `.claude/` local tool configuration is
-  ignored. (`e2c3cbb`)
+- `tests/demo-accounts.mjs` no longer fails in the month after seeding (fees are checked for the
+  current and previous month).
+
+## 1 Nov — Live on Vercel + TiDB (`244f28f`, `19f6b8b`, `e0cf5b9`, `463d181`)
+
+### Added
+- Deployed at https://tuitionhub-omega.vercel.app on Vercel Hobby (website and Go API as two
+  Services on one origin) with TiDB Cloud Starter in Singapore, for $0 per month.
+- `internal/filestore`: uploads stored on disk (default) or in the new `stored_files` table
+  (migration `005`, `FILE_STORAGE=database`).
+- Configurable upload limit (`MAX_UPLOAD_MB`, `VITE_MAX_UPLOAD_MB`), client IP from a platform
+  header (`CLIENT_IP_HEADER`), and listening on `PORT`.
+- `vercel.json` and the free-hosting deployment guide.
+
+### Fixed
+- The migration runner executes the `SELECT ... INTO @var` guards as `SET @var = (SELECT ...)`, so
+  all migrations apply on TiDB (`e0cf5b9`).
+- The browser tab shows "TuitionHub" instead of the scaffold default (`463d181`).
+
+## 31 Oct — Defects from the Software Test Report (`01cd277`, `b0536fa`, `c58399f`, `b85e839`)
+
+### Fixed
+- The API configures its MySQL connection pool (`DB_MAX_OPEN_CONNS`, `DB_MAX_IDLE_CONNS`,
+  `DB_CONN_MAX_LIFETIME`; defaults 25 / 25 / 5m). Under concurrent load about 30% of public search
+  requests had returned HTTP 500 (DEF-01).
+- Access tokens are bound to a session (`sid` claim, migration `004`), so logout, password reset and
+  suspension reject them immediately (DEF-02).
+- Registration trims the name before validation, so blank names are refused (DEF-03).
+
+### Docs
+- Software Test Report and evidence in `reports/`.
+
+## 31 Oct — Demo accounts and tooling (`5be94ce`, `efc0eda`, `8255aff`)
+
+### Added
+- Development-only demo-account seed (`scripts/seed-demo.mjs`) and checks
+  (`tests/demo-accounts.mjs`); demo credentials published in [DEMO_ACCOUNTS.md](DEMO_ACCOUNTS.md).
+- `make backend-dev` reads overrides from the git-ignored `backend/.env.local`; `make down` stops
+  the whole process tree.
+
+## 31 Oct — Repository documentation (`e2c3cbb`, `6bad3a8`)
+
+### Added
+- README, `docs/`, CONTRIBUTING and SECURITY; `backend/.env.example` is tracked.
 
 ## 31 Oct — Session security (`245f668`)
 

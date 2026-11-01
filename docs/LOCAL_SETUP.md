@@ -10,6 +10,28 @@
 | pnpm | 10 | Pinned in `.mise.toml` |
 | Google Chrome | current | Only for the browser test suites |
 
+## Step by step
+
+1. **Install the tools** above and start Docker Desktop.
+2. **Clone and install:**
+
+   ```sh
+   git clone https://github.com/Razia-rosie/Tution-Hub.git
+   cd Tution-Hub
+   pnpm install
+   ```
+
+3. **Configure (optional).** `make up` works with the local Docker defaults. Put overrides in
+   `backend/.env.local` (see [Environment variables](#environment-variables)).
+4. **Start the stack:** `make up`. A fresh MySQL volume applies all migrations automatically.
+5. **Open** http://localhost:5173 (website), http://localhost:8080/health (API) and
+   http://localhost:8081 (phpMyAdmin, local Docker credentials from `backend/docker-compose.yml`).
+6. **Create the first administrator** ([below](#first-administrator)) and, optionally, demo accounts
+   ([DEMO_ACCOUNTS.md](DEMO_ACCOUNTS.md)).
+7. **Build for production:** `pnpm build` (website, output in `dist/`) and `cd backend && go build ./...`.
+8. **Run the tests:** `cd backend && go test ./...`, then `npx tsc --noEmit -p .`; the other suites
+   are in [TESTING.md](TESTING.md).
+
 ## Start everything
 
 ```sh
@@ -50,6 +72,7 @@ does not read `.env` files itself).
 | Variable | Default | Meaning |
 |---|---|---|
 | `APP_ENV` | `development` | `production` disables development-only responses (e.g. reset tokens in API responses) and enables Gin release mode |
+| `PORT` | — | Set by hosting platforms; used when `HTTP_ADDR` is empty |
 | `HTTP_ADDR` | `:8080` | Listen address (falls back to `:$PORT` when `PORT` is set, as on Vercel) |
 | `DATABASE_URL` | — (required) | go-sql-driver DSN; keep `parseTime=true&charset=utf8mb4&loc=UTC` |
 | `JWT_SECRET` | — (required, ≥ 32 chars) | HMAC key for access tokens |
@@ -68,6 +91,7 @@ does not read `.env` files itself).
 | `DB_MAX_OPEN_CONNS` | `25` | Maximum open MySQL connections per API process (keep below MySQL `max_connections`) |
 | `DB_MAX_IDLE_CONNS` | same as `DB_MAX_OPEN_CONNS` | Connections kept open for reuse (capped at the open limit) |
 | `DB_CONN_MAX_LIFETIME` | `5m` | Connections are recycled after this age |
+| `ADMIN_BOOTSTRAP_PASSWORD` | — | Only for `cmd/bootstrap-admin`: the first administrator's password. Set it in the shell for that one command |
 
 Frontend: `API_PROXY_TARGET` (Vite proxy target, default `http://localhost:8080`), `PORT`, and
 `VITE_MAX_UPLOAD_MB` (upload limit shown and checked in the browser, default `10`).
@@ -90,7 +114,7 @@ DATABASE_URL='tuitionhub:tuitionhub@tcp(127.0.0.1:3306)/tuitionhub?parseTime=tru
 
 The runner records applied files in `schema_migrations`, baselines databases created before it
 existed, and refuses files containing `DROP`, `TRUNCATE` or `DELETE FROM`. `backend/backups/` is
-git-ignored. More in [database.md](database.md).
+git-ignored. More in [DATABASE.md](DATABASE.md).
 
 ## First administrator
 
@@ -109,4 +133,4 @@ It refuses to run if any administrator already exists. Sign in at `/admin/login`
 
 No email provider is configured. On a non-production server the forgot-password and
 email-verification endpoints return the token in the response, and the UI shows the link with a
-"development server" label. Production needs a provider (see [deployment.md](deployment.md)).
+"development server" label. Production needs a provider (see [DEPLOYMENT.md](DEPLOYMENT.md)).

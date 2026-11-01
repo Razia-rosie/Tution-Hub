@@ -1,3 +1,7 @@
+> **Historical document.** Handoff notes written on 31 Oct 2026, before the deployment and the
+> documentation reorganisation. Some statements are out of date (for example the deployment status
+> and user counts). Current documentation: [docs/README.md](../README.md).
+
 # TuitionHub — technical handoff
 
 Written 2026-10-31 from the code, database and Git state at that time (not
@@ -143,7 +147,7 @@ older endpoints superseded by `/links` and `/tuition-posts` (still covered by te
 
 ## 7. Configuration
 
-`backend/.env.example` lists every backend variable (see `docs/setup.md`). Vite: `API_PROXY_TARGET`
+`backend/.env.example` lists every backend variable (see `docs/LOCAL_SETUP.md`). Vite: `API_PROXY_TARGET`
 (default `http://localhost:8080`), `PORT`.
 
 ## 8. Known issues, debt and risks (verified against code)

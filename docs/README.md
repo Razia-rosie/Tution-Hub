@@ -1,23 +1,40 @@
 # TuitionHub documentation
 
-TuitionHub is a tutoring marketplace and tuition-management platform for Bangladesh: a React
-single-page app (`src/`) talking to a Go REST API (`backend/`) backed by MySQL 8.
+Start with the [project README](../README.md). Live site: https://tuitionhub-omega.vercel.app
 
-| Document | What it covers |
+## Understand the project
+
+| Document | Contents |
 |---|---|
-| [architecture.md](architecture.md) | System overview, request lifecycle, repository layout, frontend structure |
-| [setup.md](setup.md) | Local development, environment variables, migrations, first administrator |
-| [api.md](api.md) | Endpoint reference grouped by area, with access rules |
-| [database.md](database.md) | Tables, relationships, constraints, migration policy |
-| [workflows.md](workflows.md) | Verification, hiring, tuition agreement, classroom and coaching rules |
-| [security.md](security.md) | Authentication, sessions, access control, uploads, rate limiting, audit |
-| [testing.md](testing.md) | Test suites and how to run them against an isolated database |
-| [demo-accounts.md](demo-accounts.md) | Development-only demo accounts and connected demo data |
-| [deployment.md](deployment.md) | Requirements for a production deployment |
-| [deployment-free.md](deployment-free.md) | $0 deployment on Vercel Hobby + TiDB Cloud Starter |
-| [known-issues.md](known-issues.md) | Open gaps, technical debt and untested areas |
+| [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) | What TuitionHub is, the problem it solves in Bangladesh, who uses it |
+| [FEATURES.md](FEATURES.md) | Every feature by role, with how it was verified; workflow diagrams |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Frontend, API modules, storage, roles and permissions, design decisions |
+| [DATABASE.md](DATABASE.md) | 43 tables, migrations, ER diagram, connecting and initialising safely |
+| [API_DOCUMENTATION.md](API_DOCUMENTATION.md) | Every REST endpoint with its access rule |
+| [SECURITY.md](SECURITY.md) | Authentication, sessions, authorisation, uploads, rate limits, secrets |
 
-Also see the top-level [README](../README.md), [PROGRESS.md](../PROGRESS.md) (phase status
-and priorities), [PROJECT_HANDOFF.md](../PROJECT_HANDOFF.md), [CHANGELOG.md](../CHANGELOG.md),
-[CONTRIBUTING.md](../CONTRIBUTING.md), [SECURITY.md](../SECURITY.md) and
-[backend/README.md](../backend/README.md) (backend-specific notes).
+## Use it
+
+| Document | Contents |
+|---|---|
+| [USER_GUIDE.md](USER_GUIDE.md) | Step-by-step use for tutors, coaching centres, guardians and students |
+| [ADMIN_GUIDE.md](ADMIN_GUIDE.md) | Creating administrators, the verification review, other admin screens |
+| [DEMO_ACCOUNTS.md](DEMO_ACCOUNTS.md) | Eight development-only demo accounts and connected demo data |
+
+## Build, test and deploy
+
+| Document | Contents |
+|---|---|
+| [LOCAL_SETUP.md](LOCAL_SETUP.md) | Local development, every environment variable, migrations, first admin |
+| [TESTING.md](TESTING.md) | Test suites, how to run them, latest results, limitations |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | The live Vercel + TiDB deployment, free limits, setup, verification, troubleshooting |
+| [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | Not implemented, technical debt, untested areas |
+| [CHANGELOG.md](CHANGELOG.md) | History of changes |
+
+## Other
+
+- [screenshots/](screenshots/README.md): real screenshots used in the README
+- [history/](history/): handoff notes from 31 Oct 2026 (historical; superseded by these documents)
+- [../reports/](../reports/test-results-summary.md): Software Test Report and evidence
+- [../CONTRIBUTING.md](../CONTRIBUTING.md) and [../SECURITY.md](../SECURITY.md) (vulnerability reporting)
+- [../backend/README.md](../backend/README.md): backend-specific notes

@@ -23,7 +23,7 @@ Sign in at `http://localhost:5173/login`.
 | Student | Nabila Islam | `demo.student2@example.test` | `Demo-4Ty3-HEjf-qJjt` |
 
 The administrator account is **not** a demo account and its password is not published; create it
-with `cmd/bootstrap-admin` ([setup.md](setup.md#first-administrator)).
+with `cmd/bootstrap-admin` ([LOCAL_SETUP.md](LOCAL_SETUP.md#first-administrator)).
 
 ## What it creates
 
@@ -78,7 +78,7 @@ tuition, classroom and coaching records.
 The registration endpoints are rate-limited (20 requests per hour per address by default), so a
 first run may defer some email confirmations; run it again later to finish.
 
-Against the isolated test stack (`tuitionhub_e2e`, see [testing.md](testing.md)):
+Against the isolated test stack (`tuitionhub_e2e`, see [TESTING.md](TESTING.md)):
 
 ```sh
 DEMO_API=http://localhost:8090 DEMO_LABEL=e2e DEMO_ADMIN_EMAIL=... DEMO_ADMIN_PASSWORD=... node scripts/seed-demo.mjs --yes

@@ -2,26 +2,48 @@
 
 ## Overview
 
-```
-┌────────────────────────────┐        ┌──────────────────────────────────────┐
-│ Browser: React 19 SPA      │ /api/* │ Go API (Gin)  :8080                   │
-│ Vite dev server  :5173     ├───────►│  auth      register/login/sessions   │
-│ react-router, Tailwind 4   │ proxy  │  workflow  verification, admin review│
-└────────────────────────────┘        │  platform  marketplace, messaging,   │
-                                      │            tuitions, classrooms,     │
-                                      │            coaching, administration  │
-                                      └───────┬───────────────┬──────────────┘
-                                              │ sqlx          │ os files
-                                      ┌───────▼──────┐  ┌─────▼─────────────────┐
-                                      │ MySQL 8      │  │ DOCUMENT_DIR (private)│
-                                      │ 42 tables    │  │ verification pictures,│
-                                      └──────────────┘  │ files/ (materials,    │
-                                                        │ submissions, photos)  │
-                                                        └───────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Browser
+        SPA["React 19 SPA<br/>react-router · Tailwind 4"]
+    end
+    subgraph API["Go API (Gin)"]
+        AUTH["auth<br/>accounts · sessions · rate limits"]
+        WF["workflow<br/>verification · admin review · notifications"]
+        PL["platform<br/>marketplace · messaging · tuitions<br/>classrooms · coaching · admin tools"]
+        FS["filestore<br/>disk or database"]
+    end
+    DB[("MySQL 8.4 (local)<br/>TiDB Starter (production)<br/>43 tables")]
+    DISK[("DOCUMENT_DIR<br/>(local disk)")]
+    SPA -- "/api/v1/*" --> AUTH & WF & PL
+    WF --> FS
+    PL --> FS
+    AUTH & WF & PL -- sqlx --> DB
+    FS -- "FILE_STORAGE=disk" --> DISK
+    FS -- "FILE_STORAGE=database" --> DB
 ```
 
-In development, Vite proxies `/api` to `API_PROXY_TARGET` (default `http://localhost:8080`),
-so the browser talks to one origin and the session cookie stays first-party.
+| Environment | Website | API | Database | Uploads |
+|---|---|---|---|---|
+| Local (`make up`) | Vite dev server `:5173`, proxies `/api` to `:8080` | Go + Air hot reload `:8080` | MySQL 8.4 in Docker | Disk (`DOCUMENT_DIR`) |
+| Production | Vercel service `web` (static build) | Vercel service `api` (Go runtime), region `sin1` | TiDB Cloud Starter, Singapore | `stored_files` table |
+
+In both, the browser talks to a single origin, so the session cookie stays first-party.
+
+## User roles and permissions
+
+```mermaid
+flowchart TB
+    Public["Anyone (no account)"] --> Search["Search verified tutors and centres,<br/>read public tuition posts, contact form"]
+    Tutor["Private tutor"] --> V1["Verification (pictures)"]
+    Coaching["Coaching centre"] --> V1
+    V1 -->|approved by admin| Listed["Listed publicly; can apply to posts"]
+    Coaching --> Mgmt["Coaching management<br/>(own centre only)"]
+    Parent["Guardian / parent"] --> Link["Link child (child approves)"] --> View["Read child's classes and results"]
+    Parent --> Hire["Post tuition, chat, demo class, confirm"]
+    Student["Student"] --> Class["Classroom member:<br/>submit homework, see grades"]
+    Admin["Administrator<br/>(created by CLI only)"] --> Review["Review verifications, users,<br/>posts, tickets, settings, audit log"]
+```
 
 ## Request lifecycle (backend)
 
@@ -43,13 +65,14 @@ so the browser talks to one origin and the session cookie stays first-party.
 | Package | Responsibility |
 |---|---|
 | `internal/config` | Environment variables with defaults and validation |
-| `internal/database` | Connection wait/retry |
+| `internal/database` | Connection pool settings and wait/retry |
+| `internal/filestore` | Upload storage behind one interface: `Disk` (files under `DOCUMENT_DIR`) or `Database` (`stored_files` table) |
 | `internal/auth` | Users, bcrypt passwords, JWT access tokens, rotating refresh tokens (body or httpOnly cookie), password reset, email-verification tokens, rate limits, `RequireAuth` / `OptionalAuth`, admin bootstrap |
 | `internal/ratelimit` | In-memory fixed-window limiter |
-| `internal/workflow` | Verification applications and documents (image validation, storage), profile, dashboard, notifications, admin review/interviews, admin users/stats/audit log |
+| `internal/workflow` | Verification applications and documents (image validation, upload limit), profile, dashboard, notifications, admin review/interviews, admin users/stats/audit log |
 | `internal/platform` | Public discovery, tuition posts and applications, guardian links, chat requests, conversations, tuition agreements, payments, reviews, classrooms, coaching management, support tickets, platform settings and admin tools |
 | `internal/integration` | Integration tests against a real `*_e2e` database |
-| `cmd/migrate` | Forward-only migration runner |
+| `cmd/migrate` | Forward-only migration runner (MySQL and TiDB) |
 | `cmd/bootstrap-admin` | Creates the first administrator |
 
 ## Frontend structure
@@ -67,6 +90,7 @@ so the browser talks to one origin and the session cookie stays first-party.
 | `src/lib/platform.ts` | Typed client for the platform endpoints |
 | `src/lib/store.tsx` | React context: session, sign-up draft, verification banner state, toasts |
 | `src/lib/useLoad.ts` | Data loading with stale-response protection; action helper with toasts |
+| `src/lib/uploads.ts` | Per-file upload limit (`VITE_MAX_UPLOAD_MB`) |
 | `src/components/ui.tsx` | Shared UI primitives |
 
 Domain data is never cached in global state: each screen loads what it shows from the API.
@@ -80,5 +104,8 @@ Real-time updates use polling (open conversations every 4 s).
   inspects their content beyond validating that they are real images.
 - **Additive migrations.** The runner refuses destructive statements so it can be pointed at a
   database with real users.
-- **Local file storage.** Uploads are written to `DOCUMENT_DIR` with random names and `0600`
-  permissions and are served only through authorised endpoints.
+- **Pluggable file storage.** Uploads get random UUID keys and are served only through authorised
+  endpoints. On a single server they live on disk (`0600` permissions); on serverless hosting,
+  which has no persistent disk, they live in the `stored_files` table (`FILE_STORAGE=database`).
+- **Same code locally and in production.** Hosting differences are configuration only (`PORT`,
+  `FILE_STORAGE`, `MAX_UPLOAD_MB`, `CLIENT_IP_HEADER`); see [DEPLOYMENT.md](DEPLOYMENT.md).

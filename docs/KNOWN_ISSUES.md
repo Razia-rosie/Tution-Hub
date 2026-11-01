@@ -32,14 +32,15 @@ Verified against the code; ordered roughly by impact.
 
 - No pagination on several lists: conversations (uncapped), chat requests (200), classroom
   sessions (200), messages (500 per fetch), results (200), diary (100).
-- Rate limits are in memory per process (reset on restart; not shared across instances).
+- Rate limits are in memory per process (reset on restart; not shared across instances or
+  serverless instances).
 - Every authenticated request reads the account from the database.
 - The frontend bundle is code-split; the main chunk is about 339 KB (101 KB gzipped).
 
 ## Security and operations
 
 - Uploads live on local disk with no malware scanning or off-site copy.
-- No deployment, monitoring or backup automation exists yet ([deployment.md](deployment.md)).
+- No deployment, monitoring or backup automation exists yet ([DEPLOYMENT.md](DEPLOYMENT.md)).
 - An early public commit (`02714ca`) contains a compiled development binary
   (`backend/tmp/main`). It holds no secrets (configuration comes from the environment) and was
   untracked later; history was intentionally not rewritten.
@@ -48,5 +49,6 @@ Verified against the code; ordered roughly by impact.
 
 - Behaviour on Safari, Firefox and real mobile devices (browser tests use desktop Chrome with
   mobile and tablet viewports).
-- Load and concurrency beyond the single-user test journeys.
+- Load and concurrency on the live deployment (local load tests are in the test report).
+- The full API suites against TiDB (only the live checks and a schema comparison were run there).
 - Accessibility with screen readers (labels and focus states exist but no audit was run).
