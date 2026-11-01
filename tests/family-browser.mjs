@@ -58,6 +58,16 @@ async function main() {
     await click(P, 'Submit for review', { exact: true })
     check('parent: status is Pending Admin Review', await waitText(P, 'Pending Admin Review', 10000))
 
+    // ---- profile stays usable during review; the reviewed address is locked ----
+    await P.goto(`${WEB}/app/parent/settings`, { waitUntil: 'networkidle0' })
+    await waitText(P, 'Save profile')
+    check('parent: address is locked while under review', await P.evaluate(() => [...document.querySelectorAll('input')].some((i) => i.disabled && i.value.includes('Mirpur'))))
+    await fill(P, 'District', 'Dhaka')
+    await click(P, 'Save profile', { exact: true })
+    check('parent: other profile fields save while under review', await waitText(P, 'Profile saved.'))
+    await P.goto(`${WEB}/app/parent/verification`, { waitUntil: 'networkidle0' })
+    await waitText(P, 'Pending Admin Review')
+
     // ---- gives the child's email ----
     await fill(P, "Child's email", email('child'))
     await fill(P, "Child's name", 'Ayaan')

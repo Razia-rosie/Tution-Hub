@@ -372,6 +372,12 @@ func (s *Service) ReviewVerification(ctx context.Context, reviewerID, applicatio
 	}
 	if err == nil {
 		title, body := decisionNotification(decision)
+		if familyRole(application.Role) && decision == "approved" {
+			body = "An administrator approved your verification. Your account now has full access."
+			if application.Role == "parent" {
+				body = "An administrator approved your verification. Your child's student account is reviewed separately."
+			}
+		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO notifications (id, user_id, kind, title, body) VALUES (?, ?, ?, ?, ?)`, uuid.NewString(), userID, "verification_"+decision, title, body)
 	}
 	if err != nil {

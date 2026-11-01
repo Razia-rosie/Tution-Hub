@@ -108,6 +108,7 @@ async function main() {
   check('4. parent dashboard shows Pending Admin Review state', d.account.status === 'pending' && d.verification.status === 'pending')
   check('4. pictures are locked while under review', (await upload(parent.token, 'parent_nid')).status === 409)
   check('4. reviewed profile fields are locked while under review', (await PUT('/api/v1/workflow/profile', parent.token, { address: 'Somewhere else' })).status === 409)
+  check('4. other profile fields stay editable while under review', (await PUT('/api/v1/workflow/profile', parent.token, { district: 'Dhaka', areas: ['Mirpur'] })).status === 204)
 
   // ---------- 2 (early). parent provides the child's email after submitting ----------
   const childEmail = email('child')
@@ -192,6 +193,8 @@ async function main() {
   r = await POST('/api/v1/workflow/verification/submit', child.token)
   check('10. student submits for review', r.status === 202 && r.data.verification.status === 'pending', show(r))
   child.application = r.data.verification.id
+  check('10. student class and school are locked while under review', (await PUT('/api/v1/workflow/profile', child.token, { class_name: 'Class 12' })).status === 409)
+  check('10. student can still edit other profile fields', (await PUT('/api/v1/workflow/profile', child.token, { mediums: ['Bangla Medium'], subjects: ['Physics'] })).status === 204)
   const childDoc = (await dashboard(child)).documents[0]
 
   // ---------- 11-12. admin reviews and approves the student separately ----------
@@ -210,6 +213,7 @@ async function main() {
   f = await family(parent)
   check('13. parent sees child approved and linked', f.invitations[0].student_verification_status === 'approved' && f.invitations[0].link_status === 'approved')
   check('14. parent can now see own child progress', (await GET(`/api/v1/students/${child.id}/progress`, parent.token)).status === 200)
+  check('13. student approval notice has no tutor wording', (await GET('/api/v1/workflow/notifications', child.token)).data.notifications.some((n) => n.kind === 'verification_approved' && /full access/.test(n.body)))
   check('13. parent notified of child approval', (await GET('/api/v1/workflow/notifications', parent.token)).data.notifications.some((n) => n.kind === 'child_verification_approved'))
 
   // a second, unrelated family to test isolation

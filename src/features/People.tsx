@@ -32,8 +32,10 @@ export function Profile() {
   }, [load.data])
   const set = (k: string) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value })
   const appStatus = load.data?.verification?.status
-  // Fields an administrator is reviewing are locked while the application is pending.
-  const locked = (role === 'tutor' || role === 'coaching') && (appStatus === 'pending' || appStatus === 'under_review')
+  // Fields an administrator is reviewing are locked while the application is pending
+  // (the server answers 409 if they are sent); which fields depends on the role.
+  const pending = appStatus === 'pending' || appStatus === 'under_review'
+  const frozen = !pending ? [] : role === 'parent' ? ['address'] : role === 'student' ? ['class_name', 'institution'] : ['institution', 'education', 'subjects', 'classes', 'areas']
   const save = () => run(async () => {
     const body: Record<string, unknown> = {}
     const text = ['bio', 'current_study', 'results', 'class_name', 'opening_hours', 'established', 'address', 'district', 'gender']
@@ -43,7 +45,8 @@ export function Profile() {
     for (const k of arrays) if (form[k] !== undefined) body[k] = list(form[k])
     if (form.experience_years) body.experience_years = Number(form.experience_years)
     if (form.fee_expectation) body.fee_expectation = Number(form.fee_expectation)
-    if (!locked) for (const k of reviewed) if (form[k] !== undefined) body[k] = ['subjects', 'classes', 'areas'].includes(k) ? list(form[k]) : form[k].trim() || null
+    for (const k of reviewed) if (form[k] !== undefined) body[k] = ['subjects', 'classes', 'areas'].includes(k) ? list(form[k]) : form[k].trim() || null
+    for (const k of frozen) delete body[k]
     if (role === 'tutor' || role === 'coaching') body.listed = listed
     await updateProfile(body)
     await load.reload()
@@ -53,8 +56,8 @@ export function Profile() {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { toast('Choose a JPG, PNG or WebP picture.', 'danger'); return }
     try { await platform.setPhoto(file); setPhotoKey((k) => k + 1); toast('Photo updated.', 'success') } catch (e) { toast(errMsg(e), 'danger') }
   }
-  const F = (k: string, label: string, opt: { ph?: string; area?: boolean; type?: string; hint?: string; lock?: boolean } = {}) => (
-    <Field key={k} label={label} hint={opt.lock && locked ? 'Locked while your verification is under review' : opt.hint}>{(id) => opt.area ? <Textarea id={id} value={form[k] ?? ''} onChange={set(k)} placeholder={opt.ph} disabled={opt.lock && locked} /> : <Input id={id} type={opt.type} value={form[k] ?? ''} onChange={set(k)} placeholder={opt.ph} disabled={opt.lock && locked} />}</Field>
+  const F = (k: string, label: string, opt: { ph?: string; area?: boolean; type?: string; hint?: string } = {}) => (
+    <Field key={k} label={label} hint={frozen.includes(k) ? 'Locked while your verification is under review' : opt.hint}>{(id) => opt.area ? <Textarea id={id} value={form[k] ?? ''} onChange={set(k)} placeholder={opt.ph} disabled={frozen.includes(k)} /> : <Input id={id} type={opt.type} value={form[k] ?? ''} onChange={set(k)} placeholder={opt.ph} disabled={frozen.includes(k)} />}</Field>
   )
   return (
     <div className="space-y-4">
@@ -68,8 +71,8 @@ export function Profile() {
           </div></Card>
           <Card><div className="grid gap-3 md:grid-cols-2">
             {F('bio', role === 'coaching' ? 'About the centre' : 'About you', { area: true })}
-            {role === 'tutor' && <>{F('institution', 'Educational institution', { lock: true })}{F('education', 'Academic background', { lock: true })}{F('current_study', 'Current class / year', { ph: 'e.g. 3rd year, BSc Physics' })}{F('results', 'Results and grades', { ph: 'SSC GPA 5, HSC GPA 5' })}{F('experience_years', 'Teaching experience (years)', { type: 'number' })}{F('fee_expectation', 'Expected monthly salary (৳)', { type: 'number' })}{F('subjects', 'Subjects', { lock: true, hint: 'Separate with commas' })}{F('classes', 'Classes', { lock: true })}{F('mediums', 'Curriculum / medium', { ph: MEDIUMS.join(', ') })}{F('areas', 'Preferred areas', { lock: true })}{F('teaching_modes', 'Teaching mode', { ph: 'offline, online' })}{F('gender', 'Gender (optional)')}</>}
-            {role === 'coaching' && <>{F('institution', 'Institute name', { lock: true })}{F('education', 'Registration details', { lock: true })}{F('subjects', 'Subjects', { lock: true })}{F('classes', 'Levels', { lock: true })}{F('areas', 'Areas', { lock: true })}{F('opening_hours', 'Opening hours', { ph: 'Sat–Thu, 3–9 PM' })}{F('established', 'Established (year)')}{F('address', 'Address')}</>}
+            {role === 'tutor' && <>{F('institution', 'Educational institution')}{F('education', 'Academic background')}{F('current_study', 'Current class / year', { ph: 'e.g. 3rd year, BSc Physics' })}{F('results', 'Results and grades', { ph: 'SSC GPA 5, HSC GPA 5' })}{F('experience_years', 'Teaching experience (years)', { type: 'number' })}{F('fee_expectation', 'Expected monthly salary (৳)', { type: 'number' })}{F('subjects', 'Subjects', { hint: 'Separate with commas' })}{F('classes', 'Classes')}{F('mediums', 'Curriculum / medium', { ph: MEDIUMS.join(', ') })}{F('areas', 'Preferred areas')}{F('teaching_modes', 'Teaching mode', { ph: 'offline, online' })}{F('gender', 'Gender (optional)')}</>}
+            {role === 'coaching' && <>{F('institution', 'Institute name')}{F('education', 'Registration details')}{F('subjects', 'Subjects')}{F('classes', 'Levels')}{F('areas', 'Areas')}{F('opening_hours', 'Opening hours', { ph: 'Sat–Thu, 3–9 PM' })}{F('established', 'Established (year)')}{F('address', 'Address')}</>}
             {role === 'student' && <>{F('institution', 'School / college')}{F('class_name', 'Class', { ph: CLASSES.join(', ').slice(0, 40) })}{F('mediums', 'Medium')}{F('subjects', 'Subjects you study')}{F('areas', 'Area')}</>}
             {role === 'parent' && <>{F('district', 'District')}{F('areas', 'Area')}{F('address', 'Address (never shown publicly)')}</>}
           </div>
@@ -111,9 +114,10 @@ export function Children() {
   const kids = load.data?.links ?? []
   return (
     <div className="space-y-4">
-      <PageTitle title="Children" sub="Link your child's student account. Your child approves the link from their profile, so only you can see their classes." />
-      <Card><h2 className="text-lg">Link a child</h2><div className="mt-3 grid gap-3 sm:grid-cols-[1fr_200px_auto] sm:items-end">
-        <Field label="Child's student account email" hint="Your child signs up as a Student first.">{(id) => <Input id={id} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />}</Field>
+      <PageTitle title="Children" sub="Your children's student accounts. Only you can see their classes and progress once a link is approved." />
+      <Card><h2 className="text-lg">New student account for your child</h2><p className="mt-1 text-sm text-gray-600">Children join through you: get verified, give your child's own email, and after an administrator allows it your child signs up with that email and their own password.</p><Button className="mt-3" size="sm" onClick={() => nav('/app/parent/verification')}>Request a student account</Button></Card>
+      <Card><h2 className="text-lg">Link an existing student account</h2><p className="mt-1 text-sm text-gray-600">For a child who already has an approved student account. Available once you are verified; your child approves the link.</p><div className="mt-3 grid gap-3 sm:grid-cols-[1fr_200px_auto] sm:items-end">
+        <Field label="Child's student account email">{(id) => <Input id={id} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />}</Field>
         <Field label="You are their">{(id) => <Select id={id} value={form.relationship} onChange={(e) => setForm({ ...form, relationship: e.target.value })} options={opts(['mother', 'father', 'guardian', 'sibling', 'relative'])} />}</Field>
         <Button loading={busy} disabled={!form.email.includes('@')} onClick={() => void run(async () => { await platform.requestLink(form.email.trim(), form.relationship); setForm({ ...form, email: '' }); await load.reload() }, 'Link requested. Ask your child to approve it.')}>Send request</Button>
       </div></Card>
@@ -128,7 +132,7 @@ function ChildCard({ link, onOpen, onRemove }: { link: { id: string; student_id:
   const progress = useLoad(() => (link.status === 'approved' ? platform.progress(link.student_id) : Promise.resolve(null)), [link.student_id, link.status])
   return (
     <Card>
-      <div className="flex items-start justify-between gap-2"><div><p className="font-heading text-lg font-bold text-navy-900">{link.student_name}</p><p className="text-sm text-gray-600">{[link.class_name, link.institution].filter(Boolean).join(' · ') || 'Class not set'}</p></div><Chip tone={link.status === 'approved' ? 'green' : link.status === 'pending' ? 'amber' : 'gray'}>{link.status === 'pending' ? 'Waiting for approval' : statusLabel(link.status)}</Chip></div>
+      <div className="flex items-start justify-between gap-2"><div><p className="font-heading text-lg font-bold text-navy-900">{link.student_name}</p><p className="text-sm text-gray-600">{[link.class_name, link.institution].filter(Boolean).join(' · ') || 'Class not set'}</p></div><Chip tone={link.status === 'approved' ? 'green' : link.status === 'pending' ? 'amber' : 'gray'}>{link.status === 'pending' ? 'Waiting for approval or admin review' : statusLabel(link.status)}</Chip></div>
       {link.status === 'approved' && progress.data && <p className="mt-2 text-sm">Attendance {progress.data.attendance_percent != null ? `${Math.round(progress.data.attendance_percent)}%` : '—'} · Average {progress.data.average_score_percent != null ? `${Math.round(progress.data.average_score_percent)}%` : '—'} · {progress.data.submitted}/{progress.data.assigned} work submitted</p>}
       <div className="mt-3 flex gap-2">{link.status === 'approved' && <><Button size="sm" onClick={onOpen}>View progress</Button><Button size="sm" variant="tertiary" onClick={() => { if (window.confirm('Remove this link? You will lose access to their classes.')) onRemove() }}>Remove</Button></>}</div>
     </Card>
