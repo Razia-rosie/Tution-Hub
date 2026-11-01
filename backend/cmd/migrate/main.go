@@ -29,6 +29,16 @@ import (
 
 var destructive = regexp.MustCompile(`(?i)\b(DROP\s+(TABLE|DATABASE|SCHEMA|COLUMN)|TRUNCATE|DELETE\s+FROM)\b`)
 
+// selectInto matches the guard idiom `SELECT IF(...) INTO @var;` used by the
+// migrations. TiDB does not support SELECT ... INTO a user variable, so it is
+// executed as the equivalent `SET @var = (SELECT IF(...));`, which MySQL also
+// accepts. The files themselves stay unchanged, so recorded checksums match.
+var selectInto = regexp.MustCompile(`(?is)SELECT\s+IF\((.*?)\)\s+INTO\s+(@\w+)\s*;`)
+
+func portableSQL(sql string) string {
+	return selectInto.ReplaceAllString(sql, "SET $2 = (SELECT IF($1));")
+}
+
 // baselineMarkers maps migrations that predate this tool to a table they create.
 var baselineMarkers = map[string]string{
 	"001_auth.sql":      "refresh_tokens",
@@ -115,7 +125,7 @@ func run(dir string, dryRun bool) error {
 			continue
 		}
 		fmt.Printf("  %s: applying\n", name)
-		if _, err := db.Exec(string(data)); err != nil {
+		if _, err := db.Exec(portableSQL(string(data))); err != nil {
 			return fmt.Errorf("%s: %w", name, err)
 		}
 		if _, err := db.Exec(`INSERT INTO schema_migrations (version, checksum) VALUES (?, ?)`, name, checksum); err != nil {
