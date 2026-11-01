@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/tuitionhub/backend/internal/auth"
 	"github.com/tuitionhub/backend/internal/config"
 	"github.com/tuitionhub/backend/internal/database"
+	"github.com/tuitionhub/backend/internal/filestore"
 	"github.com/tuitionhub/backend/internal/platform"
 	"github.com/tuitionhub/backend/internal/workflow"
 )
@@ -34,16 +36,27 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+	database.ConfigurePool(db, cfg.DBMaxOpenConns, cfg.DBMaxIdleConns, cfg.DBConnMaxLifetime)
 	if err := database.WaitForConnection(db, 30*time.Second); err != nil {
 		slog.Error("database unavailable", "error", err)
 		os.Exit(1)
 	}
 
+	// Verification pictures live in DocumentDir and other uploads in its files/
+	// subdirectory; in the database both share the stored_files table.
+	documents, err := filestore.New(cfg.FileStorage, db, cfg.DocumentDir)
+	if err != nil {
+		slog.Error("invalid configuration", "error", err)
+		os.Exit(1)
+	}
+	files, _ := filestore.New(cfg.FileStorage, db, filepath.Join(cfg.DocumentDir, "files"))
+	workflow.SetMaxUploadBytes(cfg.MaxUploadBytes)
+
 	authService := auth.NewService(db, cfg)
-	workflowService := workflow.NewService(db, cfg.DocumentDir)
+	workflowService := workflow.NewService(db, documents)
 	router := newRouter(authService, cfg)
 	workflow.RegisterRoutes(router.Group("/api/v1"), authService, workflowService)
-	platform.RegisterRoutes(router.Group("/api/v1"), authService, platform.NewService(db, cfg.DocumentDir))
+	platform.RegisterRoutes(router.Group("/api/v1"), authService, platform.NewService(db, files))
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: router, ReadHeaderTimeout: 10 * time.Second}
 
 	go func() {
@@ -72,6 +85,12 @@ func newRouter(service *auth.Service, cfg config.Config) *gin.Engine {
 	if err := r.SetTrustedProxies(cfg.TrustedProxies); err != nil {
 		slog.Error("invalid TRUSTED_PROXIES", "error", err)
 		os.Exit(1)
+	}
+	// On platforms whose edge always sets the client address in a header (such
+	// as X-Real-IP on Vercel), read it from there; otherwise every visitor would
+	// share the proxy's address and its rate limits.
+	if cfg.ClientIPHeader != "" {
+		r.TrustedPlatform = cfg.ClientIPHeader
 	}
 	r.Use(gin.Logger(), gin.Recovery())
 	r.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })

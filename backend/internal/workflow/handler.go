@@ -5,7 +5,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/tuitionhub/backend/internal/auth"
+	"github.com/tuitionhub/backend/internal/filestore"
 )
 
 func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, service *Service) {
@@ -108,7 +108,7 @@ func submitVerification(s *Service) gin.HandlerFunc {
 func uploadDocument(s *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Cap the whole multipart body (file plus form fields) before parsing it.
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxDocumentBytes+1<<20)
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, int64(maxDocumentBytes)+1<<20)
 		applicationID := strings.TrimSpace(c.PostForm("application_id"))
 		documentType := strings.TrimSpace(c.PostForm("document_type"))
 		if documentType == "" {
@@ -117,12 +117,12 @@ func uploadDocument(s *Service) gin.HandlerFunc {
 		}
 		file, header, err := c.Request.FormFile("document")
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "an image file of 10 MB or less is required"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "an image file of " + MaxUploadLabel() + " or less is required"})
 			return
 		}
 		defer file.Close()
-		if header.Size <= 0 || header.Size > maxDocumentBytes {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "document must be 10 MB or smaller"})
+		if header.Size <= 0 || header.Size > int64(maxDocumentBytes) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "document must be " + MaxUploadLabel() + " or smaller"})
 			return
 		}
 		// A single Read may return fewer bytes than requested; ReadFull does not.
@@ -165,9 +165,13 @@ func document(s *Service, authService *auth.Service) gin.HandlerFunc {
 			c.JSON(http.StatusNotFound, gin.H{"error": "document not found"})
 			return
 		}
-		path := s.DocumentPath(stored.StorageKey)
-		if _, err := os.Stat(path); err != nil {
+		content, err := s.DocumentContent(c.Request.Context(), stored.StorageKey)
+		if errors.Is(err, filestore.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "document not found"})
+			return
+		}
+		if err != nil {
+			serverError(c, "could not load document", err)
 			return
 		}
 		if c.GetString("role") == "admin" && userID(c) != stored.OwnerID {
@@ -179,7 +183,7 @@ func document(s *Service, authService *auth.Service) gin.HandlerFunc {
 		c.Header("Content-Security-Policy", "default-src 'none'; img-src 'self'; sandbox")
 		c.Header("Content-Type", stored.MimeType)
 		c.Header("Content-Disposition", "inline; filename="+strconv.Quote(stored.OriginalName))
-		c.File(path)
+		c.Data(http.StatusOK, stored.MimeType, content)
 	}
 }
 

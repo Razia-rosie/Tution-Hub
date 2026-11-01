@@ -5,6 +5,7 @@ import { Button, Card, Chip, Field, Input, Modal, Select, Tabs, Textarea } from 
 import { useStore } from '../lib/store'
 import { platform, errMsg, fmtDate, fmtDateTime, type Assignment, type ClassroomDetail, type Mark } from '../lib/platform'
 import { useAction, useLoad } from '../lib/useLoad'
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from '../lib/uploads'
 import { Loaded, PageTitle, statusLabel } from './common'
 
 export type ClassroomTab = 'Schedule' | 'Attendance' | 'Homework' | 'Materials' | 'Diary' | 'Students' | 'Progress'
@@ -191,7 +192,7 @@ function SubmitForm({ assignment, onDone }: { assignment: Assignment; onDone: ()
   const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const submit = async () => {
-    if (file && file.size > 10 * 1024 * 1024) { toast('Files must be 10 MB or smaller.', 'danger'); return }
+    if (file && file.size > MAX_UPLOAD_BYTES) { toast(`Files must be ${MAX_UPLOAD_MB} MB or smaller.`, 'danger'); return }
     const form = new FormData()
     form.append('note', note)
     if (file) form.append('file', file)
@@ -259,7 +260,7 @@ function MaterialsTab({ c, reload }: TabProps) {
         <Field label="Title">{(id) => <Input id={id} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />}</Field>
         <Field label="Link (optional)">{(id) => <Input id={id} value={form.link} onChange={(e) => setForm({ ...form, link: e.target.value })} placeholder="https://" />}</Field>
         <Field label="Notes">{(id) => <Textarea id={id} value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />}</Field>
-        <Field label="File (picture or PDF, up to 10 MB)">{(id) => <Input id={id} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />}</Field>
+        <Field label={`File (picture or PDF, up to ${MAX_UPLOAD_MB} MB)`}>{(id) => <Input id={id} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />}</Field>
       </div><Button className="mt-3" loading={busy} disabled={!form.title.trim()} onClick={() => void add()}>Share</Button></Card>}
       {c.materials.length === 0 ? <Card><p className="text-sm text-gray-600">No materials shared yet.</p></Card> : c.materials.map((m) => (
         <Card key={m.id}><p className="font-semibold">{m.title}</p><p className="text-xs text-gray-600">{fmtDate(m.created_at)}</p>{m.body && <p className="mt-1 whitespace-pre-wrap text-sm">{m.body}</p>}

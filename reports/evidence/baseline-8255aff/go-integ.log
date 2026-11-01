@@ -1,0 +1,20 @@
+=== RUN   TestVerificationLifecyclePersistsConsistently
+--- PASS: TestVerificationLifecyclePersistsConsistently (0.15s)
+=== RUN   TestGlobalIntegrityInvariants
+--- PASS: TestGlobalIntegrityInvariants (0.00s)
+=== RUN   TestSecurityControls
+=== RUN   TestSecurityControls/login_is_rate_limited_per_account
+=== RUN   TestSecurityControls/refresh_token_reuse_ends_every_session
+=== RUN   TestSecurityControls/suspension_blocks_existing_tokens_immediately
+=== RUN   TestSecurityControls/students_and_parents_cannot_enter_verification
+=== RUN   TestSecurityControls/SQL_metacharacters_are_data
+--- PASS: TestSecurityControls (0.64s)
+    --- PASS: TestSecurityControls/login_is_rate_limited_per_account (0.30s)
+    --- PASS: TestSecurityControls/refresh_token_reuse_ends_every_session (0.06s)
+    --- PASS: TestSecurityControls/suspension_blocks_existing_tokens_immediately (0.12s)
+    --- PASS: TestSecurityControls/students_and_parents_cannot_enter_verification (0.11s)
+    --- PASS: TestSecurityControls/SQL_metacharacters_are_data (0.00s)
+PASS
+coverage: 39.0% of statements in ./internal/...
+ok  	github.com/tuitionhub/backend/internal/integration	1.558s	coverage: 39.0% of statements in ./internal/...
+EXIT 0

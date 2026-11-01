@@ -10,6 +10,7 @@ import (
 
 	"github.com/tuitionhub/backend/internal/auth"
 	"github.com/tuitionhub/backend/internal/ratelimit"
+	"github.com/tuitionhub/backend/internal/workflow"
 )
 
 func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, s *Service) {
@@ -164,7 +165,7 @@ func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, s *Service) {
 		return s.RemoveMember(c.Request.Context(), c.Param("id"), c.Param("student"))
 	}))
 	a.POST("/classrooms/:id/materials", s.owner(func(c *gin.Context) error {
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxFileBytes+1<<20)
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, int64(workflow.MaxUploadBytes())+1<<20)
 		_, err := s.AddMaterial(c, c.Param("id"))
 		return err
 	}))
@@ -178,7 +179,7 @@ func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, s *Service) {
 		return err
 	}))
 	a.POST("/assignments/:id/submit", func(c *gin.Context) {
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxFileBytes+1<<20)
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, int64(workflow.MaxUploadBytes())+1<<20)
 		respond(c, 201, s.Submit(c, c.Param("id")), nil)
 	})
 	a.GET("/assignments/:id/submissions", func(c *gin.Context) {

@@ -1,0 +1,8 @@
+ M backend/internal/auth/handler.go
+ M backend/internal/integration/integration_test.go
+?? backend/internal/auth/register_test.go
+?? reports/
+ backend/internal/auth/handler.go                 | 14 +++++++-
+ backend/internal/integration/integration_test.go | 41 ++++++++++++++++++++++++
+ 2 files changed, 54 insertions(+), 1 deletion(-)
+diff sha256: dab4564c2b45b0c1007616bfd0c25467f0b79267f183ac54d959edda4a137fe7

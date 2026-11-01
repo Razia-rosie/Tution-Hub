@@ -34,3 +34,6 @@ backend/backups/
 
 # Local assistant and editor tooling (preview launch configs, session files).
 .claude/
+
+# macOS folder metadata
+.DS_Store

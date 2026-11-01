@@ -14,7 +14,7 @@ cd .. && npx tsc --noEmit -p . && pnpm build
 ```
 
 For changes to API behaviour, permissions or UI flows, also run the integration, API and browser
-suites against the isolated `tuitionhub_e2e` database ([docs/testing.md](docs/testing.md)) and add
+suites against the isolated `tuitionhub_e2e` database ([docs/TESTING.md](docs/TESTING.md)) and add
 checks for new behaviour. `pnpm build` alone does not type-check.
 
 ## Commit messages

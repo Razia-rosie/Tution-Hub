@@ -1,0 +1,37 @@
+[
+ {
+  "id": "EX-01",
+  "title": "Access token still accepted after logout",
+  "status": 401
+ },
+ {
+  "id": "EX-02",
+  "title": "Access token issued before password reset still accepted",
+  "status": 401
+ },
+ {
+  "id": "EX-03",
+  "title": "Register with 121-char name",
+  "status": 400
+ },
+ {
+  "id": "EX-04",
+  "title": "Register with 120-char name",
+  "status": 201
+ },
+ {
+  "id": "EX-05",
+  "title": "Register with whitespace-only name",
+  "status": 400
+ },
+ {
+  "id": "EX-06",
+  "title": "Register with 72-char password (upper boundary)",
+  "status": 201
+ },
+ {
+  "id": "EX-07",
+  "title": "Register with Bengali-script name",
+  "status": 201
+ }
+]

@@ -22,6 +22,11 @@ type registerRequest struct {
 	Role     string  `json:"role" validate:"omitempty,oneof=tutor student parent coaching"`
 	Phone    *string `json:"phone" validate:"omitempty,max=32"`
 }
+
+// normalize trims the name before validation, so whitespace does not count
+// towards the length rule and a blank name is rejected instead of stored empty.
+func (r *registerRequest) normalize() { r.Name = strings.TrimSpace(r.Name) }
+
 type loginRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required"`
@@ -236,14 +241,15 @@ func RequireAuth(s *Service) gin.HandlerFunc {
 			return
 		}
 
-		id, err := s.ParseAccessToken(strings.TrimSpace(strings.TrimPrefix(header, "Bearer ")))
+		id, sessionID, err := s.ParseAccessToken(strings.TrimSpace(strings.TrimPrefix(header, "Bearer ")))
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired access token"})
 			return
 		}
-		// Access tokens are stateless, so a deleted or suspended account would otherwise
-		// keep working until the token expires. One indexed lookup closes that gap.
-		role, status, err := s.AccountState(c.Request.Context(), id)
+		// Access tokens are signed, not stored, so a deleted or suspended account or an
+		// ended session (logout, password reset) would otherwise keep working until the
+		// token expires. One indexed lookup closes that gap.
+		role, status, err := s.SessionState(c.Request.Context(), id, sessionID)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired access token"})
 			return
@@ -267,8 +273,8 @@ func OptionalAuth(s *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := strings.TrimSpace(c.GetHeader("Authorization"))
 		if strings.HasPrefix(header, "Bearer ") {
-			if id, err := s.ParseAccessToken(strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))); err == nil {
-				if role, status, err := s.AccountState(c.Request.Context(), id); err == nil && status != "suspended" {
+			if id, sessionID, err := s.ParseAccessToken(strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))); err == nil {
+				if role, status, err := s.SessionState(c.Request.Context(), id, sessionID); err == nil && status != "suspended" {
 					c.Set("user_id", id)
 					c.Set("role", role)
 					c.Set("account_status", status)
@@ -368,8 +374,15 @@ func verifyEmail(s *Service) gin.HandlerFunc {
 	}
 }
 
+// normalizer is implemented by requests that clean their fields before validation.
+type normalizer interface{ normalize() }
+
 func bind(c *gin.Context, target interface{}) bool {
-	if err := c.ShouldBindJSON(target); err != nil || validate.Struct(target) != nil {
+	err := c.ShouldBindJSON(target)
+	if n, ok := target.(normalizer); ok && err == nil {
+		n.normalize()
+	}
+	if err != nil || validate.Struct(target) != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return false
 	}

@@ -7,6 +7,7 @@ import (
 	_ "image/jpeg" // register decoders used by image.DecodeConfig / image.Decode
 	_ "image/png"
 	"net/http"
+	"strconv"
 
 	_ "golang.org/x/image/webp"
 )
@@ -57,8 +58,24 @@ func missingRequired(role string, uploaded map[string]bool) []string {
 	return missing
 }
 
+// maxDocumentBytes caps every uploaded file; SetMaxUploadBytes changes it at
+// start-up (serverless hosts limit request bodies).
+var maxDocumentBytes = 10 << 20
+
+// SetMaxUploadBytes sets the per-file upload limit. Call it before serving.
+func SetMaxUploadBytes(n int) {
+	if n > 0 {
+		maxDocumentBytes = n
+	}
+}
+
+// MaxUploadBytes returns the per-file upload limit.
+func MaxUploadBytes() int { return maxDocumentBytes }
+
+// MaxUploadLabel describes the limit for error messages, such as "10 MB".
+func MaxUploadLabel() string { return strconv.Itoa(maxDocumentBytes>>20) + " MB" }
+
 const (
-	maxDocumentBytes = 10 << 20
 	// A small file can declare enormous dimensions and expand to gigabytes when
 	// decoded (a decompression bomb), so dimensions are checked before decoding.
 	maxDocumentPixels = 40_000_000

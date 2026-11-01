@@ -1,0 +1,3 @@
+{"vus":1,"secs":10,"requests":2692,"errors":0,"errorRate":0,"p95":4.9}
+{"vus":5,"secs":10,"requests":19564,"errors":0,"errorRate":0,"p95":3.5}
+{"vus":10,"secs":10,"requests":27325,"errors":0,"errorRate":0,"p95":5.3}

@@ -1,0 +1,69 @@
+?   	github.com/tuitionhub/backend/cmd/bootstrap-admin	[no test files]
+?   	github.com/tuitionhub/backend/cmd/migrate	[no test files]
+?   	github.com/tuitionhub/backend/cmd/server	[no test files]
+=== RUN   TestRegisterRejectsBlankNamesBeforeTouchingDatabase
+--- PASS: TestRegisterRejectsBlankNamesBeforeTouchingDatabase (0.00s)
+=== RUN   TestRegisterStoresTrimmedName
+--- PASS: TestRegisterStoresTrimmedName (0.05s)
+=== RUN   TestRegisterNameLengthRuleIsUnchangedForValidNames
+--- PASS: TestRegisterNameLengthRuleIsUnchangedForValidNames (0.23s)
+=== RUN   TestBootstrapAdminRefusesWhenAdminExists
+--- PASS: TestBootstrapAdminRefusesWhenAdminExists (0.00s)
+=== RUN   TestBootstrapAdminSecondAttemptIsRefused
+--- PASS: TestBootstrapAdminSecondAttemptIsRefused (0.05s)
+=== RUN   TestBootstrapAdminValidatesInputBeforeDatabaseAccess
+--- PASS: TestBootstrapAdminValidatesInputBeforeDatabaseAccess (0.00s)
+=== RUN   TestBootstrapAdminRefusesExistingEmail
+--- PASS: TestBootstrapAdminRefusesExistingEmail (0.04s)
+=== RUN   TestParseAccessTokenReturnsUserAndSession
+--- PASS: TestParseAccessTokenReturnsUserAndSession (0.00s)
+=== RUN   TestParseAccessTokenRefusesTokensWithoutSession
+--- PASS: TestParseAccessTokenRefusesTokensWithoutSession (0.00s)
+PASS
+ok  	github.com/tuitionhub/backend/internal/auth	1.374s
+=== RUN   TestLoadDefaultsAndOverrides
+--- PASS: TestLoadDefaultsAndOverrides (0.00s)
+=== RUN   TestLoadPoolOverridesCapIdleAtOpen
+--- PASS: TestLoadPoolOverridesCapIdleAtOpen (0.00s)
+=== RUN   TestLoadRejectsWeakSecret
+--- PASS: TestLoadRejectsWeakSecret (0.00s)
+PASS
+ok  	github.com/tuitionhub/backend/internal/config	0.408s
+=== RUN   TestConfigurePoolSetsOpenLimit
+--- PASS: TestConfigurePoolSetsOpenLimit (0.00s)
+PASS
+ok  	github.com/tuitionhub/backend/internal/database	0.241s
+?   	github.com/tuitionhub/backend/internal/platform	[no test files]
+=== RUN   TestLimiterBlocksAfterLimitAndResetsAfterWindow
+--- PASS: TestLimiterBlocksAfterLimitAndResetsAfterWindow (0.00s)
+=== RUN   TestLimiterResetClearsKey
+--- PASS: TestLimiterResetClearsKey (0.00s)
+PASS
+ok  	github.com/tuitionhub/backend/internal/ratelimit	1.098s
+=== RUN   TestValidateImageAcceptsRealImages
+--- PASS: TestValidateImageAcceptsRealImages (0.00s)
+=== RUN   TestValidateImageRejectsNonImagesAndForgeries
+--- PASS: TestValidateImageRejectsNonImagesAndForgeries (0.00s)
+=== RUN   TestValidateImageRejectsDecompressionBomb
+--- PASS: TestValidateImageRejectsDecompressionBomb (0.00s)
+=== RUN   TestDocumentRequirements
+--- PASS: TestDocumentRequirements (0.00s)
+=== RUN   TestSubmitVerificationRefusesNonVerifiableRole
+--- PASS: TestSubmitVerificationRefusesNonVerifiableRole (0.00s)
+=== RUN   TestSupportedImageTypes
+--- PASS: TestSupportedImageTypes (0.00s)
+=== RUN   TestNullIfEmpty
+--- PASS: TestNullIfEmpty (0.00s)
+=== RUN   TestDecisionAccountStatus
+--- PASS: TestDecisionAccountStatus (0.00s)
+=== RUN   TestReviewVerificationRequiresReasonBeforeTouchingDatabase
+--- PASS: TestReviewVerificationRequiresReasonBeforeTouchingDatabase (0.00s)
+=== RUN   TestReviewVerificationRejectsDecidedApplication
+--- PASS: TestReviewVerificationRejectsDecidedApplication (0.00s)
+=== RUN   TestSubmitVerificationRefusesApprovedAccount
+--- PASS: TestSubmitVerificationRefusesApprovedAccount (0.00s)
+=== RUN   TestListVerificationsScansJSONColumns
+--- PASS: TestListVerificationsScansJSONColumns (0.00s)
+PASS
+ok  	github.com/tuitionhub/backend/internal/workflow	0.739s
+EXIT 0

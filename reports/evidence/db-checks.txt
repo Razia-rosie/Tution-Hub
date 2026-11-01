@@ -1,0 +1,60 @@
+## tables in tuitionhub_qa_e2e
+42
+## foreign keys
+82
+## FK delete rules
+CASCADE	50
+SET NULL	31
+NO ACTION	1
+## unique indexes on users
+email	email
+PRIMARY	id
+## users by role/status
+tutor	pending	24
+tutor	active	29
+tutor	suspended	1
+student	active	62
+parent	active	109
+coaching	pending	9
+coaching	active	17
+coaching	rejected	5
+admin	active	1
+## non-bcrypt password hashes
+0
+## total users
+257
+## refresh tokens not 64-hex
+0
+## refresh tokens total
+2176
+## refresh tokens without session_id
+0
+## orphan tuition_listings.student_id (no FK)
+0
+## admins
+1
+## verification docs / apps
+87	60
+## application status distribution
+draft	9
+approved	46
+rejected	5
+## audit logs
+504
+## DB constraint: duplicate email insert (rolled back)
+ERROR 1062 (23000) at line 1: Duplicate entry 'e2e-coaching-aav415@tuitionhub.test' for key 'users.email'
+## DB constraint: refresh token for non-existent user (rolled back)
+ERROR 1452 (23000) at line 1: Cannot add or update a child row: a foreign key constraint fails (`tuitionhub_qa_e2e`.`refresh_tokens`, CONSTRAINT `fk_refresh_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE)
+## stored files perms
+  80 -rw-------@
+   1 drwx------@
+     100
+## migrations applied (tuitionhub_qa_e2e)
+001_auth.sql
+002_workflows.sql
+003_platform.sql
+004_session_ids.sql
+## original tuitionhub DB (read-only aggregate)
+13	1
+## original tuitionhub refresh tokens / without session_id / migrations
+236	0	001_auth.sql,002_workflows.sql,003_platform.sql,004_session_ids.sql

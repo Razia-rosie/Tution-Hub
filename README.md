@@ -1,164 +1,291 @@
+<div align="center">
+
+<img src="public/favicon.svg" alt="TuitionHub logo" width="72" height="72" />
+
 # TuitionHub
 
-A tutoring marketplace and tuition-management platform for Bangladesh. Guardians and
-students find **manually verified** private tutors and coaching centres, agree on a
-tuition after a demo class, and then follow the teaching in one place: schedule,
-attendance, homework, grades, study materials and a daily class diary. Coaching
-centres run their teachers, students, batches, exams and fees on the same platform,
-and administrators review every tutor and centre by hand before they are listed.
+**A verified, safety-first tutoring marketplace and tuition-management platform for Bangladesh.**
 
-**Stack:** React 19 + Vite 8 + TypeScript + Tailwind CSS 4 (frontend) · Go 1.25 +
-Gin + sqlx REST API (backend) · MySQL 8 (Docker for local development).
+Guardians and students find manually verified private tutors and coaching centres, agree on a
+tuition after a demo class, and follow the teaching in one place: schedule, attendance,
+homework, grades, materials and a daily class diary.
 
-> Status: feature-complete for local development and covered by automated tests.
-> It is **not deployed**, and email, SMS and online-payment providers are not yet
-> integrated. See [PROGRESS.md](PROGRESS.md) and [docs/known-issues.md](docs/known-issues.md).
+[**Live site**](https://tuitionhub-omega.vercel.app) ·
+[Admin login](https://tuitionhub-omega.vercel.app/admin/login) ·
+[Documentation](docs/README.md) ·
+[Repository](https://github.com/Razia-rosie/Tution-Hub)
 
-## Documentation
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)
+![Gin](https://img.shields.io/badge/Gin-1.11-00ADD8)
+![MySQL](https://img.shields.io/badge/MySQL-8.4-4479A1?logo=mysql&logoColor=white)
+![TiDB](https://img.shields.io/badge/TiDB_Cloud-Starter-E30C34)
+![Vercel](https://img.shields.io/badge/Vercel-Hobby-000000?logo=vercel&logoColor=white)
 
-| Document | What it covers |
+<img src="docs/screenshots/live-home.png" alt="TuitionHub home page on the live site" width="860" />
+
+</div>
+
+---
+
+## Contents
+
+[Overview](#overview) · [Live demo](#live-demo) · [Features](#features) ·
+[Screenshots](#screenshots) · [Tech stack](#technology-stack) · [Architecture](#architecture) ·
+[Database](#database) · [Local development](#local-development) ·
+[Environment variables](#environment-variables) · [Deployment](#deployment) ·
+[Testing](#testing) · [Project structure](#project-structure) · [Roadmap](#roadmap) ·
+[Contributors](#contributors) · [License](#license)
+
+## Overview
+
+**The problem.** In Bangladesh most private tuition is arranged informally: through word of
+mouth, Facebook groups and agents. Guardians rarely know whether a tutor is who they say they
+are, phone numbers and home addresses are shared with strangers early, and once a tuition starts
+there is no shared record of classes, attendance, homework or fees.
+
+**What TuitionHub does.**
+
+- Every **private tutor and coaching centre is checked by a human administrator** from pictures
+  of their identity documents (and trade licence for centres) before they are listed publicly.
+- Families and tutors **talk inside the platform**; phone and email are shared only after both
+  sides confirm a tuition.
+- After hiring, each tuition gets a **classroom** with schedule, attendance, homework and grading,
+  study materials, a daily diary and fee tracking. Guardians see their own children's progress.
+- Coaching centres run **teachers, students, batches, exams and fees** on the same platform.
+
+**Who uses it.** Private tutors, coaching centres, guardians/parents, students, and platform
+administrators. More in [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md).
+
+## Live demo
+
+| | |
 |---|---|
-| [docs/README.md](docs/README.md) | Documentation index |
-| [docs/setup.md](docs/setup.md) | Local development setup, environment variables, migrations |
-| [docs/architecture.md](docs/architecture.md) | How the frontend, API and database fit together; repository layout |
-| [docs/api.md](docs/api.md) | REST API reference with access rules |
-| [docs/database.md](docs/database.md) | Tables, relationships, constraints and migrations |
-| [docs/workflows.md](docs/workflows.md) | Verification, hiring, classroom and coaching workflows step by step |
-| [docs/security.md](docs/security.md) | Authentication, sessions, access control, uploads, rate limiting |
-| [docs/testing.md](docs/testing.md) | Unit, integration, API and browser test suites |
-| [docs/deployment.md](docs/deployment.md) | What a production deployment needs (not yet done) |
-| [docs/known-issues.md](docs/known-issues.md) | Open gaps and technical debt |
-| [PROGRESS.md](PROGRESS.md) | Phase status, verified test results, prioritised remaining work |
-| [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) | Condensed technical handoff for continuing development |
-| [CHANGELOG.md](CHANGELOG.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) | History, conventions, vulnerability reporting |
+| Website | **https://tuitionhub-omega.vercel.app** |
+| Admin login | https://tuitionhub-omega.vercel.app/admin/login (administrator accounts are created with a command-line tool; credentials are not published) |
+| Hosting | Vercel Hobby (website + Go API) and TiDB Cloud Starter in Singapore (database). $0 per month. |
+
+**What has been verified on the live site** (1 November 2026), using a test tutor account named
+"Deploy Check":
+
+```
+Sign up → Log in → Profile → Picture upload → Submit → Admin approval → Public tutor listing
+```
+
+Before approval the profile was not visible in the public tutor list; after an administrator
+approved it, it appeared in public tutor search with subject Physics and area Dhaka. The same run
+checked the session cookie (`HttpOnly`, `Secure`, `SameSite=Strict`), refresh and logout, that a
+picture over 4 MB is rejected, that an uploaded picture downloads byte-for-byte unchanged with
+`Cache-Control: private, no-store`, and that pictures need a login. The rest of the feature set has
+been verified by the automated suites against MySQL locally (see [Testing](#testing)), not
+exercised on the live site.
+
+> The public site has no demo accounts. The demo accounts in
+> [docs/DEMO_ACCOUNTS.md](docs/DEMO_ACCOUNTS.md) exist only in local development databases.
 
 ## Features
 
-- **Manual, picture-based verification** for tutors (ID, optional education certificate)
-  and coaching centres (trade licence and owner ID). An administrator approves, rejects
-  with a reason, or requests corrections; there is no automated document checking.
-- **Discovery**: public search of verified tutors and coaching centres by subject, class,
-  area, mode and fee; public tuition posts.
-- **Hiring**: tuition posts with applications (shortlist, decline, accept), chat requests,
-  persistent messaging with unread counts, blocking and reporting, demo-class requests,
-  and two-sided confirmation of terms. Contact details are shared only after both sides confirm.
-- **Classrooms**: weekly schedules, attendance with absence alerts to guardians,
-  homework and assignments with file submissions, grading and feedback, study materials
-  (pictures or PDF), a daily diary and progress summaries.
-- **Guardian links**: a parent links a child's student account and the child approves;
-  parents then see only their own children's classes.
-- **Coaching management**: branches, teachers, courses, student roster, batches (each with
-  its own classroom), capacity-checked enrolment, exams with publish-locked results,
-  monthly fee tracking with reminders, and operational reports.
-- **Fee tracking and reviews**: monthly fee records (due, marked paid, confirmed,
-  disputed) and reviews from families with a confirmed tuition. TuitionHub does not move money.
-- **Administration**: statistics, user management with suspension, the verification queue
-  with document preview and history, tuition-post moderation, support and complaint
-  tickets, suspicious-activity list, reviews, payments, awards, period reports with CSV
-  export, platform settings, announcements and an audit log.
-- **Notifications** for every important event, with read state and an unread badge.
+Detailed list with verification levels: [docs/FEATURES.md](docs/FEATURES.md).
 
-## User roles
-
-| Role | Can |
+| Role | What they can do |
 |---|---|
-| Private tutor | Get verified, build a profile, apply to tuition posts, chat, run classrooms, track fees, reply to reviews |
-| Coaching centre | Get verified, manage teachers, courses, branches, students, batches, exams and fees |
-| Parent / guardian | Link children, post tuition, search and contact tutors, book demo classes, confirm tuitions, monitor progress |
-| Student | Approve guardians, join classrooms, submit homework, see grades, attendance and results |
-| Admin | Review verifications and run the platform (no public registration; created with a CLI) |
+| **Private tutor** | Register; upload ID (and optional education certificate) pictures; submit for manual review; build a public profile with photo, subjects, classes, areas, fee and availability; search and apply to tuition posts; accept chat requests; agree demo classes and terms; run classrooms (schedule, attendance, homework, grading, materials, diary); track monthly fees; reply to reviews |
+| **Coaching centre** | Register and get verified (trade licence + owner ID); manage branches, teachers, courses and a student roster; create batches with capacity and their own classroom; take attendance; set homework; create exams, enter and publish marks; generate monthly fees, record payments and send reminders; view an operational report |
+| **Guardian / parent** | Link a child's student account (the child approves); post tuition needs; search verified tutors and centres; review applications; chat; request demo classes; confirm terms; follow the child's attendance, homework, grades, diary and results; mark fees paid; review the tutor |
+| **Student** | Approve or refuse guardian links; post tuition needs (API); join classrooms; download materials; submit homework (picture or PDF); see scores, feedback, attendance and published coaching results |
+| **Administrator** | Review verification applications with document preview, history and optional interviews; approve, reject with a reason, or request corrections; manage and suspend users; moderate tuition posts; handle support tickets and reports; see suspicious activity; grant awards; send announcements; change platform settings; read the audit log |
+
+**Verification is manual and picture-only.** Uploads must be real JPEG, PNG or WebP images; the
+server decodes them fully but never reads or scores their content. There is no OCR, face
+recognition or automatic approval.
+
+## Screenshots
+
+All screenshots are of the current application. Public pages are from the live site; signed-in
+pages use fictional demo or test data (no real people or documents).
+
+| Live home | Live tutor search (after the approval check) |
+|---|---|
+| <img src="docs/screenshots/live-home.png" alt="Home page" width="420" /> | <img src="docs/screenshots/live-find-tutor.png" alt="Public tutor search showing the approved Deploy Check tutor" width="420" /> |
+| **Tutor dashboard** | **Tutor: active tuition** |
+| <img src="docs/screenshots/tutor-dashboard.png" alt="Tutor dashboard" width="420" /> | <img src="docs/screenshots/tutor-my-students.png" alt="Tutor's active tuition with classroom actions" width="420" /> |
+| **Tutor waiting for manual review** | **Student homework and grading** |
+| <img src="docs/screenshots/tutor-verification-pending.png" alt="Verification center in pending state" width="420" /> | <img src="docs/screenshots/student-homework.png" alt="Student classroom homework tab" width="420" /> |
+| **Guardian: child's progress** | **Coaching centre: batches** |
+| <img src="docs/screenshots/parent-progress.png" alt="Parent progress and results" width="420" /> | <img src="docs/screenshots/coaching-batches.png" alt="Coaching batches" width="420" /> |
+| **Admin overview** (test database) | **Admin verification queue** (test database) |
+| <img src="docs/screenshots/admin-overview.png" alt="Admin overview statistics" width="420" /> | <img src="docs/screenshots/admin-verification-queue.png" alt="Admin verification review queue" width="420" /> |
+
+More: [mobile home](docs/screenshots/live-home-mobile.png), [sign-up role choice](docs/screenshots/live-signup.png),
+[admin login](docs/screenshots/live-admin-login.png). Screenshots still worth adding are listed in
+[docs/screenshots/README.md](docs/screenshots/README.md).
+
+## Technology stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 19, TypeScript 5, Vite 8, Tailwind CSS 4, React Router 8, lucide-react icons |
+| Backend | Go 1.25, Gin 1.11, sqlx, go-sql-driver/mysql, golang-jwt v5, bcrypt (`x/crypto`), go-playground/validator, `x/image` (WebP) |
+| Database | MySQL 8.4 (local, Docker) · TiDB Cloud Starter (production, MySQL-compatible) |
+| File storage | Local disk (development) or the `stored_files` database table (production) |
+| Hosting | Vercel Hobby: Services (Vite site + Go server on one domain), Go runtime (Beta) |
+| Testing | Go `testing` + go-sqlmock, Go integration tests, Node.js API suites, puppeteer-core browser suites |
+| Tooling | pnpm 10, Node.js 22 (`.mise.toml`), Docker Compose, Air (hot reload), Make |
 
 ## Architecture
 
-```
-Browser (React SPA, Vite)
-   │  /api/*  (Vite dev proxy → :8080)
-   ▼
-Go API (Gin)  ── auth · workflow (verification) · platform (marketplace, messaging,
-   │              classrooms, coaching, admin) · ratelimit · config
-   ▼
-MySQL 8  +  private file storage on disk (DOCUMENT_DIR)
-```
-
-Details: [docs/architecture.md](docs/architecture.md).
-
-## Repository structure
-
-```
-src/                 React frontend (pages, feature screens, API clients, UI kit)
-backend/
-  cmd/server         API entrypoint
-  cmd/migrate        forward-only migration runner
-  cmd/bootstrap-admin  creates the first administrator
-  internal/          auth, workflow, platform, ratelimit, config, database, integration tests
-  migrations/        001_auth.sql, 002_workflows.sql, 003_platform.sql
-tests/               API and browser end-to-end suites, fixtures (tests/legacy is obsolete)
-docs/                project documentation
-Makefile             development stack commands
+```mermaid
+flowchart LR
+    B[Browser<br/>React SPA] -- "/ (static)" --> W[Vercel service: web<br/>Vite build]
+    B -- "/api/*" --> A[Vercel service: api<br/>Go + Gin]
+    A -- "sqlx, TLS" --> D[(TiDB Cloud Starter<br/>43 tables)]
+    A -- "FILE_STORAGE=database" --> F[(stored_files table)]
+    F -.- D
 ```
 
-## Quick start
+- One origin serves both the website and the API, so the session cookie stays first-party
+  (`SameSite=Strict`, no CORS).
+- The Go API has three modules: `auth` (accounts, sessions), `workflow` (verification and admin
+  review) and `platform` (marketplace, messaging, tuitions, classrooms, coaching, administration).
+- Every authenticated request re-reads the account's role and status, so suspension is immediate.
+- Locally the same code runs against MySQL in Docker with uploads on disk.
 
-**Prerequisites:** Docker Desktop, Go 1.25 (`backend/go.mod`), Node.js 22 and pnpm 10
-(pinned in `.mise.toml`), and Google Chrome for the browser tests.
+Details and diagrams: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Database
+
+- **Production:** TiDB Cloud Starter (MySQL-compatible), AWS Singapore. **Local:** MySQL 8.4 in Docker.
+- **43 tables**: 42 defined in `backend/migrations/` (`001`–`005`) plus `schema_migrations`, which
+  the migration runner creates. Verified on both TiDB and the local test database.
+- **Schema setup:** `go run ./cmd/migrate` applies pending migrations in order. It is forward-only,
+  refuses destructive statements (`DROP TABLE`, `TRUNCATE`, `DELETE FROM`) and records each file.
+- **Connection:** one `DATABASE_URL` in go-sql-driver format; TiDB needs `tls=true`.
+
+Tables, relationships and an ER diagram: [docs/DATABASE.md](docs/DATABASE.md).
+
+## Local development
+
+**Prerequisites:** Docker Desktop, Go 1.25, Node.js 22, pnpm 10, and Google Chrome (browser tests).
 
 ```sh
+git clone https://github.com/Razia-rosie/Tution-Hub.git
+cd Tution-Hub
 pnpm install
 make up        # MySQL + phpMyAdmin (Docker), Go API with hot reload, Vite dev server
-make status    # show the API and frontend processes
-make down      # stop everything
 ```
 
 | Service | URL |
 |---|---|
-| Frontend | http://localhost:5173 |
-| API | http://localhost:8080 (`/health`) |
-| phpMyAdmin | http://localhost:8081 (local Docker credentials in `backend/docker-compose.yml`) |
+| Website | http://localhost:5173 |
+| API | http://localhost:8080/health |
+| phpMyAdmin | http://localhost:8081 |
 
-A fresh MySQL volume applies every migration automatically. For an existing database,
-back it up and run `go run ./cmd/migrate` from `backend/`. Create the first administrator
-with `go run ./cmd/bootstrap-admin` (see [docs/setup.md](docs/setup.md)).
-
-`make up` runs the API with development defaults. To configure it yourself, copy
-`backend/.env.example` and export the variables; production must use its own
-`DATABASE_URL` and a random `JWT_SECRET` of at least 32 characters.
-
-## Authentication and verification in short
-
-- Passwords are hashed with bcrypt. Sign-in issues a 15-minute JWT access token and a
-  rotating refresh token. In the browser the refresh token lives in an `HttpOnly`,
-  `SameSite=Strict` cookie and the access token only in memory.
-- Every authenticated request re-checks the account in the database, so suspension takes
-  effect immediately. Login, registration and contact forms are rate limited.
-- Tutors and coaching centres upload real JPEG, PNG or WebP pictures (≤ 10 MB, fully
-  decoded server-side). Pictures are stored outside the web root and are visible only to
-  their owner and administrators; every administrator view is audited.
-
-More: [docs/security.md](docs/security.md) and [docs/workflows.md](docs/workflows.md).
-
-## Testing
+A fresh MySQL volume applies the migrations automatically. Create the first administrator with
+`go run ./cmd/bootstrap-admin` and, optionally, demo accounts with `scripts/seed-demo.mjs`.
 
 ```sh
-cd backend && go test ./...                 # unit tests
-npx tsc --noEmit -p . && pnpm build         # type-check and production build
+make status    # API and frontend processes
+make down      # stop everything (data is kept in the Docker volume)
+pnpm build     # production build of the website
 ```
 
-The integration, API and browser suites run against a separate `tuitionhub_e2e` database
-and a second API instance; [docs/testing.md](docs/testing.md) has the exact commands.
+Step-by-step guide, including existing databases and overrides: [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md).
+
+## Environment variables
+
+Templates with placeholder values only: [`backend/.env.example`](backend/.env.example) (API) and
+[`.env.example`](.env.example) (website build). The most important:
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `DATABASE_URL` | yes | MySQL/TiDB connection (go-sql-driver DSN) |
+| `JWT_SECRET` | yes | At least 32 random characters; signs access tokens |
+| `APP_ENV` | production | `production` hides development-only responses |
+| `COOKIE_SECURE` | production | `true` behind HTTPS |
+| `FILE_STORAGE` | no | `disk` (default) or `database` |
+| `MAX_UPLOAD_MB` / `VITE_MAX_UPLOAD_MB` | no | Per-file upload limit (10 by default, 4 on Vercel) |
+| `CLIENT_IP_HEADER` | no | `X-Real-IP` on Vercel, so rate limits see real visitors |
+
+Full table: [docs/LOCAL_SETUP.md#environment-variables](docs/LOCAL_SETUP.md#environment-variables).
 
 ## Deployment
 
-Not deployed yet. A production setup needs HTTPS, a reverse proxy, a managed MySQL
-database, persistent storage for uploads, an email provider and secrets management;
-see [docs/deployment.md](docs/deployment.md).
+Production runs on **Vercel Hobby + TiDB Cloud Starter** for $0, without a payment method.
+`vercel.json` defines two services (the Vite site and the Go API); environment variables are set
+in the Vercel project; the schema is applied from a developer machine with `cmd/migrate`.
 
-## Known limitations
+Steps, limits, verification checklist and troubleshooting: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-No email, SMS or payment-gateway integration; messages and notifications use polling
-rather than push; rate limits are in memory per process. Full list:
-[docs/known-issues.md](docs/known-issues.md).
+## Testing
 
-## Contributing
+| Check | Latest result |
+|---|---|
+| Go unit tests (`go test ./...`, 7 packages) | pass |
+| Go integration tests (isolated `_e2e` database) | pass |
+| API suite `tests/verification-e2e.mjs` | 119 / 119 |
+| API suite `tests/platform-e2e.mjs` | 169 / 169 |
+| Browser suite `tests/browser-e2e.mjs` | 60 / 60 |
+| Browser suite `tests/journeys-browser.mjs` | 34 / 34 |
+| `gofmt`, `go vet`, `tsc --noEmit`, `pnpm build` | clean |
+| Live deployment checks | 12 / 12, plus the admin approval check |
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Report security issues privately as described in
-[SECURITY.md](SECURITY.md).
+The formal Software Test Report (128 specified cases, 115 passed, 2 failed, 2 blocked, 9 not
+tested; core statement coverage 45.2%) is in [reports/](reports/test-results-summary.md).
+How to run everything: [docs/TESTING.md](docs/TESTING.md).
+
+## Project structure
+
+```
+src/                      React frontend
+  pages/                  public pages, auth pages, admin screens, RolePage (role → screen)
+  features/               feature screens shared by roles (marketplace, messages, classrooms…)
+  components/             app shell, UI kit, verification centre
+  lib/                    API clients, session handling, navigation, upload limit
+backend/
+  cmd/server              API entry point
+  cmd/migrate             forward-only migration runner
+  cmd/bootstrap-admin     creates the first administrator
+  internal/auth           accounts, passwords, JWT, refresh sessions, rate limits
+  internal/workflow       verification, documents, admin review, notifications
+  internal/platform       marketplace, messaging, tuitions, classrooms, coaching, admin
+  internal/filestore      upload storage (disk or database)
+  internal/integration    integration tests (isolated database only)
+  migrations/             001–005 SQL migrations
+tests/                    API and browser end-to-end suites and fixtures
+scripts/                  development-only demo-account seed
+docs/                     documentation and screenshots
+reports/                  Software Test Report and test evidence
+vercel.json               Vercel services configuration
+Makefile                  local development commands
+```
+
+## Roadmap
+
+Not implemented yet (see [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)):
+
+- Email delivery for password reset and email verification (no provider configured)
+- SMS/OTP and online payments (fees are tracked, not collected)
+- Real-time push for messages and notifications (currently polling)
+- Logins for coaching teachers; a student tuition-posting screen (the API exists)
+- Review moderation, pagination on long lists, CI pipeline, higher test coverage
+
+## Contributors
+
+| Name | Role |
+|---|---|
+| [Razia Rosie](https://github.com/Razia-rosie) | Project owner and author of all commits |
+
+Commit trailers record that development was assisted by Claude (Anthropic), an AI coding assistant.
+
+## License
+
+This repository does **not** have an open-source license yet. Without one, the default copyright
+rules apply: you may view the code on GitHub, but reuse, modification and distribution are not
+granted. Add a `LICENSE` file if you want to allow that.
+
+---
+
+[Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) · [Changelog](docs/CHANGELOG.md)

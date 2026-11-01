@@ -1,0 +1,28 @@
+=== RUN   TestVerificationLifecyclePersistsConsistently
+--- PASS: TestVerificationLifecyclePersistsConsistently (0.15s)
+=== RUN   TestGlobalIntegrityInvariants
+--- PASS: TestGlobalIntegrityInvariants (0.00s)
+=== RUN   TestSecurityControls
+=== RUN   TestSecurityControls/login_is_rate_limited_per_account
+=== RUN   TestSecurityControls/refresh_token_reuse_ends_every_session
+=== RUN   TestSecurityControls/logout_rejects_the_session's_access_token_at_once
+=== RUN   TestSecurityControls/password_reset_rejects_every_earlier_access_token
+=== RUN   TestSecurityControls/refresh_keeps_the_session_alive
+=== RUN   TestSecurityControls/access_tokens_without_a_session_are_refused
+=== RUN   TestSecurityControls/suspension_blocks_existing_tokens_immediately
+=== RUN   TestSecurityControls/students_and_parents_cannot_enter_verification
+=== RUN   TestSecurityControls/SQL_metacharacters_are_data
+--- PASS: TestSecurityControls (1.15s)
+    --- PASS: TestSecurityControls/login_is_rate_limited_per_account (0.31s)
+    --- PASS: TestSecurityControls/refresh_token_reuse_ends_every_session (0.06s)
+    --- PASS: TestSecurityControls/logout_rejects_the_session's_access_token_at_once (0.17s)
+    --- PASS: TestSecurityControls/password_reset_rejects_every_earlier_access_token (0.22s)
+    --- PASS: TestSecurityControls/refresh_keeps_the_session_alive (0.06s)
+    --- PASS: TestSecurityControls/access_tokens_without_a_session_are_refused (0.05s)
+    --- PASS: TestSecurityControls/suspension_blocks_existing_tokens_immediately (0.12s)
+    --- PASS: TestSecurityControls/students_and_parents_cannot_enter_verification (0.11s)
+    --- PASS: TestSecurityControls/SQL_metacharacters_are_data (0.00s)
+PASS
+coverage: 44.8% of statements in ./internal/...
+ok  	github.com/tuitionhub/backend/internal/integration	1.940s	coverage: 44.8% of statements in ./internal/...
+EXIT 0

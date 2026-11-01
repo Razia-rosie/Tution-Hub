@@ -1,0 +1,37 @@
+PASS parent: link request sent
+PASS student: approves guardian
+PASS parent: child linked
+PASS parent: tuition post published
+PASS tutor: applied from Find Tuition
+PASS tutor: application tracked
+PASS parent: accepting opens Messages
+PASS parent: message sent
+PASS tutor: sees unread conversation
+PASS tutor: reply appears for parent (polling)
+PASS parent: demo class requested
+PASS tutor: demo class accepted
+PASS tutor: terms proposed
+PASS parent: tuition active with contact shared
+PASS tutor: classes scheduled
+PASS tutor: attendance saved
+PASS tutor: homework published
+PASS tutor: material shared
+PASS tutor: diary saved
+PASS student: homework submitted
+PASS student: sees shared material
+PASS tutor: graded
+PASS student: sees grade and feedback
+PASS parent: progress shows grade and absence
+PASS parent: absence notification
+PASS parent: views child attendance (read-only)
+PASS tutor: month recorded due
+PASS coaching: teacher added
+PASS coaching: batch created with teacher
+PASS coaching: student enrolled
+PASS coaching: fees generated
+PASS coaching: fee marked paid
+PASS coaching: report reflects data
+PASS no unexpected browser console errors
+
+run f3y512: 34 pass, 0 fail
+EXIT 0

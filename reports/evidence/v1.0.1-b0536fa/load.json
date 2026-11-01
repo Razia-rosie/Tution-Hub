@@ -1,0 +1,42 @@
+{
+  "at": "2026-10-31T06:12:16.984Z",
+  "host": "local (same machine as API)",
+  "results": [
+    {
+      "scenario": "GET /health",
+      "vus": 20,
+      "seconds": 15,
+      "requests": 175605,
+      "rps": 11707,
+      "errors": 0,
+      "errorRate": 0,
+      "p50": 2,
+      "p95": 2.3,
+      "p99": 2.6
+    },
+    {
+      "scenario": "GET /api/v1/public/tutors",
+      "vus": 20,
+      "seconds": 20,
+      "requests": 81847,
+      "rps": 4092.3,
+      "errors": 0,
+      "errorRate": 0,
+      "p50": 4.7,
+      "p95": 7.2,
+      "p99": 9.7
+    },
+    {
+      "scenario": "GET /api/v1/public/tuition",
+      "vus": 20,
+      "seconds": 20,
+      "requests": 130582,
+      "rps": 6529.1,
+      "errors": 0,
+      "errorRate": 0,
+      "p50": 2.9,
+      "p95": 4.3,
+      "p99": 6.2
+    }
+  ]
+}

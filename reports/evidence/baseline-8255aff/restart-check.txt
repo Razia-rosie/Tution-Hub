@@ -1,0 +1,6 @@
+register=201
+old_pid=43628
+health_while_stopped=000
+new_pid=45387
+login_after_restart=200
+email=qa-restart-e2ca8e@tuitionhub.test

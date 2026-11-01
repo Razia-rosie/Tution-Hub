@@ -1,0 +1,172 @@
+PASS tutor: verified by admin
+PASS tutor: rich profile saved after approval
+PASS tutor: profile photo upload
+PASS tutor: PDF rejected as profile photo
+PASS discovery: verified tutor is listed with profile
+PASS discovery: unverified tutor is not listed
+PASS discovery: subject filter excludes
+PASS discovery: tutor profile page
+PASS discovery: unverified tutor profile is 404
+PASS discovery: public photo of listed tutor
+PASS discovery: private photo of a parent is hidden
+PASS link: unknown student email is 404
+PASS link: tutor email is not a student
+PASS link: parent requests student
+PASS link: students cannot request links
+PASS link: parent cannot approve their own request
+PASS link: student approves
+PASS progress: guardian can view
+PASS progress: unrelated parent gets 404
+PASS post: cannot post for an unlinked child
+PASS post: tutors cannot post tuition
+PASS post: validation names the bad field
+PASS post: parent posts for linked child
+PASS marketplace: tutor finds the post with filters
+PASS marketplace: public listing hides nothing sensitive
+PASS apply: unverified tutor is refused
+PASS apply: verified tutor applies
+PASS apply: duplicate is 409
+PASS save: tutor saves post
+PASS apply: tutor tracks application
+PASS apply: others cannot list applicants
+PASS apply: poster lists applicants
+PASS apply: tutor cannot accept own application
+PASS apply: poster shortlists
+PASS apply: poster accepts and a conversation opens
+PASS apply: accepted cannot be withdrawn
+PASS chat: tutors cannot send chat requests
+PASS chat: cannot request an unverified tutor
+PASS chat: parent requests a tutor
+PASS chat: duplicate pending is 409
+PASS chat: requester cannot accept
+PASS chat: tutor accepts
+PASS chat: answered request is final
+PASS messages: system message opens the thread
+PASS messages: parent sends
+PASS messages: empty message rejected
+PASS messages: tutor has unread
+PASS messages: outsider cannot read
+PASS messages: outsider cannot post
+PASS messages: read clears unread
+PASS messages: conversation list names the other side
+PASS block: tutor blocks parent2
+PASS block: blocked user cannot message
+PASS tuition: cannot start without a conversation
+PASS tuition: past demo-class time rejected
+PASS tuition: demo class requested
+PASS tuition: guardian cannot accept own demo request
+PASS tuition: tutor accepts demo class
+PASS tuition: terms need fee, mode and start
+PASS tuition: tutor proposes terms
+PASS tuition: proposer cannot confirm twice
+PASS tuition: contact hidden before confirmation
+PASS tuition: guardian confirms -> active with classroom
+PASS tuition: contact shared once active
+PASS tuition: post marked filled
+PASS tuition: outsiders cannot act
+PASS classroom: student sees it
+PASS classroom: guardian sees it with child name
+PASS classroom: outsider gets 404
+PASS material: student cannot add
+PASS material: tutor adds PDF notes
+PASS material: bad link rejected
+PASS material: script file rejected
+PASS material: student sees it and can download
+PASS material: outsider download is 404
+PASS assignment: needs a due date
+PASS assignment: tutor creates
+PASS assignment: student sees it
+PASS submit: empty submission rejected
+PASS submit: student submits a picture
+PASS submit: guardian cannot submit
+PASS submit: tutor sees the submission
+PASS submit: guardian may open the file
+PASS submit: outsider may not open the file
+PASS review: score above max rejected
+PASS review: student cannot grade
+PASS review: tutor grades with feedback
+PASS review: student sees score and feedback
+PASS submit: reviewed work is locked
+PASS schedule: tutor schedules weekly classes
+PASS schedule: 4 sessions created
+PASS attendance: non-member rejected
+PASS attendance: student cannot mark
+PASS attendance: tutor marks absent
+PASS attendance: guardian notified of absence
+PASS schedule: reschedule needs a new time
+PASS schedule: cancel a class
+PASS diary: tutor writes today
+PASS diary: guardian reads it
+PASS progress: attendance and grades computed
+PASS payment: guardian cannot raise a due
+PASS payment: tutor records month due
+PASS payment: guardian marks paid
+PASS payment: tutor confirms receipt
+PASS payment: confirmed cannot be disputed
+PASS payment: ledger shows confirmed
+PASS review: tutor cannot review self
+PASS review: guardian reviews
+PASS review: public rating updated
+PASS review: tutor replies
+PASS tuition: complete
+PASS coaching: verified with licence and owner ID
+PASS coaching: tutors cannot use coaching APIs
+PASS coaching: add teacher
+PASS coaching: cannot edit another centre's teacher
+PASS coaching: add course
+PASS coaching: add branch
+PASS coaching: batch cannot use another centre's teacher
+PASS coaching: create batch
+PASS coaching: student link needs a real student account
+PASS coaching: admit students (with and without accounts)
+PASS coaching: enrol A
+PASS coaching: enrol B
+PASS coaching: capacity enforced
+PASS coaching: batch has a classroom and 2 enrolled
+PASS coaching: linked student sees the batch classroom
+PASS coaching: roster attendance
+PASS coaching: roster outside the batch rejected
+PASS coaching: batch assignment
+PASS coaching: create exam
+PASS coaching: marks above total rejected
+PASS coaching: enter and publish marks
+PASS coaching: published marks are locked
+PASS coaching: student sees published result
+PASS coaching: linked guardian sees result
+PASS coaching: fees generated for enrolled students
+PASS coaching: generating again creates none
+PASS coaching: remind guardian with account
+PASS coaching: remind without guardian account is refused
+PASS coaching: mark fee paid
+PASS coaching: report from real data
+PASS coaching: public profile counts
+PASS admin: non-admin blocked
+PASS support: user files a report
+PASS support: admin sees it
+PASS support: resolution required
+PASS support: admin resolves
+PASS support: reporter notified and sees status
+PASS settings: invalid type rejected
+PASS settings: unknown key rejected
+PASS settings: close registrations
+PASS settings: registration refused while closed
+PASS settings: pause tutor applications
+PASS settings: applications refused while paused
+PASS settings: maintenance banner is public
+PASS contact: anonymous request reaches the support queue
+PASS contact: validation
+PASS settings: reopen registrations
+PASS announce: sent to tutors
+PASS announce: tutor received, parent did not
+PASS awards: grant to tutor
+PASS awards: shown on public profile
+PASS awards: not for parents
+PASS admin: tuition posts listed
+PASS admin: close a post
+PASS admin: closed post cannot be reopened by owner
+PASS admin: user activity detail
+PASS admin: platform report from real data
+PASS admin: repeated failed logins flagged
+
+run s099pr: 169 pass, 0 fail
+EXIT 0

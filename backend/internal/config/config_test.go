@@ -15,6 +15,9 @@ func TestLoadDefaultsAndOverrides(t *testing.T) {
 	if cfg.RefreshReuseGrace != 20*time.Second || cfg.LoginLimitPerAccount != 5 || cfg.SignupLimitPerIP != 20 || cfg.DocumentDir != "private_documents" {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
+	if cfg.DBMaxOpenConns != 25 || cfg.DBMaxIdleConns != 25 || cfg.DBConnMaxLifetime != 5*time.Minute {
+		t.Fatalf("unexpected pool defaults: %+v", cfg)
+	}
 	t.Setenv("REFRESH_REUSE_GRACE", "2s")
 	t.Setenv("TRUSTED_PROXIES", "10.0.0.1, 10.0.0.2")
 	cfg, _ = Load()
@@ -23,10 +26,47 @@ func TestLoadDefaultsAndOverrides(t *testing.T) {
 	}
 }
 
+func TestLoadPoolOverridesCapIdleAtOpen(t *testing.T) {
+	t.Setenv("DATABASE_URL", "user:pass@tcp(localhost:3306)/db")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("DB_MAX_OPEN_CONNS", "10")
+	cfg, _ := Load()
+	if cfg.DBMaxOpenConns != 10 || cfg.DBMaxIdleConns != 10 {
+		t.Fatalf("idle should follow the open limit: %+v", cfg)
+	}
+	t.Setenv("DB_MAX_IDLE_CONNS", "40")
+	t.Setenv("DB_CONN_MAX_LIFETIME", "1m")
+	cfg, _ = Load()
+	if cfg.DBMaxIdleConns != 10 || cfg.DBConnMaxLifetime != time.Minute {
+		t.Fatalf("idle must be capped at the open limit: %+v", cfg)
+	}
+}
+
 func TestLoadRejectsWeakSecret(t *testing.T) {
 	t.Setenv("DATABASE_URL", "x")
 	t.Setenv("JWT_SECRET", "short")
 	if _, err := Load(); err == nil {
 		t.Fatal("expected an error for a short JWT secret")
+	}
+}
+
+func TestLoadHostingSettings(t *testing.T) {
+	t.Setenv("DATABASE_URL", "user:pass@tcp(localhost:3306)/db")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	cfg, _ := Load()
+	if cfg.HTTPAddr != ":8080" || cfg.FileStorage != "disk" || cfg.MaxUploadBytes != 10<<20 || cfg.ClientIPHeader != "" {
+		t.Fatalf("unexpected hosting defaults: %+v", cfg)
+	}
+	t.Setenv("PORT", "3000")
+	t.Setenv("FILE_STORAGE", "database")
+	t.Setenv("MAX_UPLOAD_MB", "4")
+	t.Setenv("CLIENT_IP_HEADER", "X-Real-IP")
+	cfg, _ = Load()
+	if cfg.HTTPAddr != ":3000" || cfg.FileStorage != "database" || cfg.MaxUploadBytes != 4<<20 || cfg.ClientIPHeader != "X-Real-IP" {
+		t.Fatalf("hosting overrides not applied: %+v", cfg)
+	}
+	t.Setenv("HTTP_ADDR", ":9090")
+	if cfg, _ = Load(); cfg.HTTPAddr != ":9090" {
+		t.Fatalf("HTTP_ADDR should win over PORT: %s", cfg.HTTPAddr)
 	}
 }

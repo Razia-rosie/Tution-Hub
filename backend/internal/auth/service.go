@@ -166,7 +166,7 @@ func (s *Service) Register(ctx context.Context, name, email, password, role stri
 		}
 		return User{}, Tokens{}, err
 	}
-	tokens, err := s.issueTokens(ctx, user)
+	tokens, err := s.issueTokens(ctx, user, "")
 	return user, tokens, err
 }
 
@@ -184,7 +184,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (User, Toke
 	if user.AccountStatus == "suspended" {
 		return User{}, Tokens{}, ErrSuspended
 	}
-	tokens, err := s.issueTokens(ctx, user)
+	tokens, err := s.issueTokens(ctx, user, "")
 	return user, tokens, err
 }
 
@@ -199,9 +199,10 @@ func (s *Service) Refresh(ctx context.Context, raw string) (User, Tokens, error)
 	var session struct {
 		User
 		TokenID   string     `db:"token_id"`
+		SessionID string     `db:"session_id"`
 		RevokedAt *time.Time `db:"revoked_at"`
 	}
-	err := s.db.GetContext(ctx, &session, `SELECT u.id, u.name, u.email, u.phone, u.password_hash, u.role, u.account_status, u.email_verified_at, u.created_at, rt.id AS token_id, rt.revoked_at FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id WHERE rt.token_hash = ? AND rt.expires_at > UTC_TIMESTAMP(6)`, hash)
+	err := s.db.GetContext(ctx, &session, `SELECT u.id, u.name, u.email, u.phone, u.password_hash, u.role, u.account_status, u.email_verified_at, u.created_at, rt.id AS token_id, COALESCE(rt.session_id, rt.id) AS session_id, rt.revoked_at FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id WHERE rt.token_hash = ? AND rt.expires_at > UTC_TIMESTAMP(6)`, hash)
 	if err != nil {
 		return User{}, Tokens{}, ErrInvalidToken
 	}
@@ -216,27 +217,43 @@ func (s *Service) Refresh(ctx context.Context, raw string) (User, Tokens, error)
 		// stolen token stops working for the thief too. Logged-out tokens never
 		// reach here because logout also expires them.
 		if time.Since(*session.RevokedAt) <= s.cfg.RefreshReuseGrace {
-			tokens, err := s.issueTokens(ctx, session.User)
+			tokens, err := s.issueTokens(ctx, session.User, session.SessionID)
 			return session.User, tokens, err
 		}
 		_, _ = s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP(6)), expires_at = UTC_TIMESTAMP(6) WHERE user_id = ?`, session.ID)
 		return User{}, Tokens{}, ErrInvalidToken
 	}
+	// The replacement is stored before the old token is revoked so the session
+	// always has a live token and its access tokens never see a gap.
+	tokens, err := s.issueTokens(ctx, session.User, session.SessionID)
+	if err != nil {
+		return User{}, Tokens{}, err
+	}
 	if _, err := s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE id = ? AND revoked_at IS NULL`, session.TokenID); err != nil {
 		return User{}, Tokens{}, err
 	}
-	tokens, err := s.issueTokens(ctx, session.User)
-	return session.User, tokens, err
+	return session.User, tokens, nil
 }
 
-// AccountState returns the role and status used for per-request authorization.
-func (s *Service) AccountState(ctx context.Context, id string) (role, status string, err error) {
+// SessionState returns the role and status used for per-request authorization.
+// It fails when the access token's session has ended (logout, password reset,
+// suspension or refresh-token reuse), so ended sessions are refused at once.
+// A suspended account is still reported (not ErrInvalidToken) even though its
+// sessions were revoked, so callers keep answering 403 with the reason.
+func (s *Service) SessionState(ctx context.Context, userID, sessionID string) (role, status string, err error) {
 	var row struct {
 		Role   string `db:"role"`
 		Status string `db:"account_status"`
+		Live   bool   `db:"live"`
 	}
-	err = s.db.GetContext(ctx, &row, `SELECT role, account_status FROM users WHERE id = ?`, id)
-	return row.Role, row.Status, err
+	err = s.db.GetContext(ctx, &row, `SELECT u.role, u.account_status, EXISTS (SELECT 1 FROM refresh_tokens rt WHERE rt.session_id = ? AND rt.user_id = u.id AND rt.revoked_at IS NULL AND rt.expires_at > UTC_TIMESTAMP(6)) AS live FROM users u WHERE u.id = ?`, sessionID, userID)
+	if err != nil {
+		return "", "", err
+	}
+	if !row.Live && row.Status != "suspended" {
+		return "", "", ErrInvalidToken
+	}
+	return row.Role, row.Status, nil
 }
 
 // RevokeAllSessions ends every refresh session for a user, e.g. on suspension.
@@ -245,9 +262,11 @@ func (s *Service) RevokeAllSessions(ctx context.Context, userID string) error {
 	return err
 }
 
+// RevokeRefresh ends the session the refresh token belongs to, which also
+// rejects that session's access tokens.
 func (s *Service) RevokeRefresh(ctx context.Context, raw string) error {
 	// Expiring as well as revoking keeps a logged-out token out of the rotation grace period.
-	_, err := s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP(6)), expires_at = UTC_TIMESTAMP(6) WHERE token_hash = ?`, tokenHash(raw))
+	_, err := s.db.ExecContext(ctx, `UPDATE refresh_tokens rt JOIN refresh_tokens cur ON cur.session_id = rt.session_id AND cur.user_id = rt.user_id SET rt.revoked_at = COALESCE(rt.revoked_at, UTC_TIMESTAMP(6)), rt.expires_at = UTC_TIMESTAMP(6) WHERE cur.token_hash = ?`, tokenHash(raw))
 	return err
 }
 
@@ -328,9 +347,14 @@ func (s *Service) VerifyEmail(ctx context.Context, rawToken string) error {
 	return tx.Commit()
 }
 
-func (s *Service) issueTokens(ctx context.Context, user User) (Tokens, error) {
+// issueTokens stores a refresh token for sessionID (a new session when empty)
+// and signs an access token bound to that session.
+func (s *Service) issueTokens(ctx context.Context, user User, sessionID string) (Tokens, error) {
+	if sessionID == "" {
+		sessionID = uuid.NewString()
+	}
 	now := time.Now().UTC()
-	claims := jwt.MapClaims{"sub": user.ID, "role": user.Role, "iat": now.Unix(), "exp": now.Add(s.cfg.AccessTokenTTL).Unix()}
+	claims := jwt.MapClaims{"sub": user.ID, "sid": sessionID, "role": user.Role, "iat": now.Unix(), "exp": now.Add(s.cfg.AccessTokenTTL).Unix()}
 	access, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(s.cfg.JWTSecret))
 	if err != nil {
 		return Tokens{}, err
@@ -339,15 +363,18 @@ func (s *Service) issueTokens(ctx context.Context, user User) (Tokens, error) {
 	if err != nil {
 		return Tokens{}, err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)`,
-		uuid.NewString(), user.ID, tokenHash(refresh), now.Add(s.cfg.RefreshTokenTTL))
+	_, err = s.db.ExecContext(ctx, `INSERT INTO refresh_tokens (id, user_id, session_id, token_hash, expires_at) VALUES (?, ?, ?, ?, ?)`,
+		uuid.NewString(), user.ID, sessionID, tokenHash(refresh), now.Add(s.cfg.RefreshTokenTTL))
 	if err != nil {
 		return Tokens{}, err
 	}
 	return Tokens{AccessToken: access, RefreshToken: refresh, TokenType: "Bearer", ExpiresIn: int64(s.cfg.AccessTokenTTL.Seconds())}, nil
 }
 
-func (s *Service) ParseAccessToken(raw string) (string, error) {
+// ParseAccessToken verifies the signature and expiry and returns the user and
+// session ids. Tokens without a session id (issued before sessions existed) are
+// refused; browsers then refresh silently and receive a bound token.
+func (s *Service) ParseAccessToken(raw string) (userID, sessionID string, err error) {
 	token, err := jwt.Parse(raw, func(token *jwt.Token) (interface{}, error) {
 		if token.Method != jwt.SigningMethodHS256 {
 			return nil, ErrInvalidToken
@@ -355,10 +382,18 @@ func (s *Service) ParseAccessToken(raw string) (string, error) {
 		return []byte(s.cfg.JWTSecret), nil
 	})
 	if err != nil || !token.Valid {
-		return "", ErrInvalidToken
+		return "", "", ErrInvalidToken
 	}
-	id, err := token.Claims.GetSubject()
-	return id, err
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", "", ErrInvalidToken
+	}
+	userID, _ = claims["sub"].(string)
+	sessionID, _ = claims["sid"].(string)
+	if userID == "" || sessionID == "" {
+		return "", "", ErrInvalidToken
+	}
+	return userID, sessionID, nil
 }
 
 func randomToken(size int) (string, error) {

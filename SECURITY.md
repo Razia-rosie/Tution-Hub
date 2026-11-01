@@ -25,4 +25,4 @@ Only the current `main` branch is supported. The application is not yet deployed
 
 ## How the application protects data
 
-See [docs/security.md](docs/security.md).
+See [docs/SECURITY.md](docs/SECURITY.md).

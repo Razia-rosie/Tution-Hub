@@ -1,0 +1,63 @@
+PASS tutor: registration continues into verification
+PASS tutor: shows "Get verified" and read-only banner
+PASS tutor: real page has no sample-data notice
+PASS tutor: submitting empty lists what is missing
+PASS tutor: picture uploads and thumbnail renders
+PASS tutor: non-image rejected in the browser
+PASS tutor: submitted -> Under review
+PASS tutor: fields and pictures locked
+PASS session: no token is readable by page scripts
+PASS tutor: session and status survive reload
+PASS tutor: cannot open admin pages
+PASS tutor: dashboard shows real figures, no sample data
+PASS coaching: registration continues into verification
+PASS coaching: both pictures uploaded (incl. 3000x2000 photo)
+PASS coaching: submitted -> Under review
+PASS admin: lands on the review queue
+PASS admin: tutor and coaching in Pending
+PASS admin: submitted details shown
+PASS admin: picture preview loads
+PASS admin: full-size viewer opens
+PASS admin: viewer closes with Escape
+PASS admin: history shows the submission
+PASS admin: short reason keeps the button disabled
+PASS admin: correction requested
+PASS admin: coaching pictures both load
+PASS admin: coaching approved
+PASS tutor: sees the correction reason
+PASS tutor: details prefilled for correction
+PASS tutor: resubmitted -> Under review
+PASS admin: resubmission flagged
+PASS admin: tutor approved
+PASS tutor: shows Verified
+PASS tutor: read-only banner gone
+PASS tutor: unread badge on the bell
+PASS tutor: notifications list the decisions
+PASS tutor: mark all read clears the badge
+PASS admin: overview shows live figures
+PASS admin: user search finds the tutor
+PASS admin: tutor suspended
+PASS suspended tutor is signed out
+PASS suspended tutor sees why sign-in fails
+PASS admin: tutor reactivated
+PASS admin: audit log lists suspension and decisions
+PASS sign-out ends the session
+PASS sweep: tutor mobile (18 screens) render without crashes or overflow
+PASS sweep: tutor tablet (18 screens) render without crashes or overflow
+PASS sweep: tutor desktop (18 screens) render without crashes or overflow
+PASS sweep: coaching mobile (16 screens) render without crashes or overflow
+PASS sweep: coaching tablet (16 screens) render without crashes or overflow
+PASS sweep: coaching desktop (16 screens) render without crashes or overflow
+PASS sweep: admin mobile (19 screens) render without crashes or overflow
+PASS sweep: admin tablet (19 screens) render without crashes or overflow
+PASS sweep: admin desktop (19 screens) render without crashes or overflow
+PASS sweep: student mobile (13 screens) render without crashes or overflow
+PASS sweep: student tablet (13 screens) render without crashes or overflow
+PASS sweep: student desktop (13 screens) render without crashes or overflow
+PASS sweep: parent mobile (14 screens) render without crashes or overflow
+PASS sweep: parent tablet (14 screens) render without crashes or overflow
+PASS sweep: parent desktop (14 screens) render without crashes or overflow
+PASS no unexpected browser console errors
+
+run 5krpcl: 60 pass, 0 fail
+EXIT 0

@@ -1,0 +1,61 @@
+PASS MP-AUTH-01 Register rejects 7-char password (min 8) => 400
+PASS MP-AUTH-02 Register accepts 8-char password (boundary) => 201
+PASS MP-AUTH-03 Register rejects 73-char password (bcrypt max 72) => 400
+PASS MP-AUTH-04 Register rejects 1-char name (min 2) => 400
+PASS MP-AUTH-05 Register rejects malformed email => 400
+PASS MP-AUTH-06 Register rejects missing required fields => 400
+PASS MP-AUTH-07 Register rejects malformed JSON body => 400
+PASS MP-AUTH-08 Self-registration as admin is refused => 400 role=-
+PASS MP-AUTH-09 Parent registration returns 201 + access token => 201, token=true
+PASS MP-AUTH-10 Duplicate email registration refused => 409
+PASS MP-AUTH-11 Duplicate email in different letter case refused => 409
+PASS MP-AUTH-12 Wrong password and unknown email give identical 401 => 401 / 401, same=true
+PASS MP-AUTH-13 Valid login returns 200 and tokens => 200
+PASS MP-AUTH-14 /auth/me without token => 401
+PASS MP-AUTH-15 /auth/me with tampered JWT signature => 401
+PASS MP-AUTH-16 /auth/me with valid token returns own profile, no password hash => 200, hasHash=false
+PASS MP-SESS-01 Cookie-mode login sets th_refresh HttpOnly SameSite=Strict on /api/v1/auth => th_refresh=<redacted>; Path=/api/v1/auth; Max-Age=2592000; HttpOnly; SameSite=Strict
+PASS MP-SESS-02 Cookie-mode login does not return refresh token in JSON body => refresh_token present=false
+PASS MP-SESS-03 Cookie refresh without X-Session-Mode header (CSRF) refused => 401
+PASS MP-SESS-04 Cookie refresh with header succeeds => 200
+PASS MP-SESS-05 Cross-origin preflight gets no Access-Control-Allow-Origin => ACAO=absent
+PASS MP-SESS-06 Cookie logout succeeds and clears cookie => 204 true
+PASS MP-RBAC-01 Dashboard without authentication => 401
+PASS MP-RBAC-02 Student calls admin platform API => 403
+PASS MP-RBAC-03 Tutor calls admin verification queue => 403
+PASS MP-RBAC-04 Parent calls coaching-only API => 403
+PASS MP-RBAC-05 Parent submits verification (tutor/coaching only) => 403
+PASS MP-RBAC-06 Unverified (pending) tutor blocked from active-only tuition feed => 403
+PASS MP-RBAC-07 Unverified tutor cannot apply to tuition => 403
+PASS MP-IDOR-01 Non-existent verification document ID => 404
+PASS MP-IDOR-02 Malformed classroom ID => 404
+PASS MP-IDOR-03 Messages of a conversation the caller is not in => 404
+PASS MP-UPL-01 Tutor uploads a real PNG verification picture => 201 id=true
+PASS MP-IDOR-04 Another tutor requests the first tutor's verification picture => 404
+PASS MP-IDOR-05 Anonymous request for a verification picture => 401
+PASS MP-UPL-02 Owner fetches own picture with private, no-store, nosniff, sandbox CSP => 200 cc=private, no-store xcto=nosniff csp=default-src 'none'; img-src 'self'; sandbox
+PASS MP-UPL-03 Text file disguised as .png (image/png) rejected => 400
+PASS MP-UPL-04 11 MB upload rejected (limit 10 MB) => 400
+PASS MP-UPL-05 Student (non-verifiable role) uploads verification picture => 403
+PASS MP-INJ-01 SQL metacharacters in public tutor search => 200 sqlError=false
+PASS MP-INJ-02 SQL injection string in login => 400
+PASS MP-INJ-03 LIKE wildcards in search do not error => 200
+PASS MP-XSS-01 Script tag in name stored as inert text (API returns JSON, not HTML) => 201 application/json; charset=utf-8
+PASS MP-DATA-01 Public tutor listing exposes no email or phone => 200 leak=false
+PASS MP-DATA-02 Public coaching listing exposes no email => 200 leak=false
+PASS MP-API-01 Health endpoint => 200 {"status":"ok"}
+PASS MP-API-02 Unknown route => 404
+PASS MP-API-03 Public info endpoint returns JSON => 200 application/json; charset=utf-8
+PASS MP-PWR-01 Forgot-password for existing account (dev server returns token instead of email) => 202 token=true
+PASS MP-PWR-02 Forgot-password for unknown email does not reveal existence => 202 token=false
+PASS MP-PWR-03 Reset with 5-char new password rejected => 400
+PASS MP-PWR-04 Reset with valid token and new password => 200
+PASS MP-PWR-05 Reset token is single-use => 400
+PASS MP-PWR-06 Old password refused, new password accepted after reset => 401 / 200
+PASS MP-PWR-07 Refresh token issued before the reset is revoked (docs/security.md) => 401
+PASS MP-EV-01 Email-verification request returns development token on dev server => 202 token=true
+PASS MP-EV-02 Verify email with invalid token => 400
+PASS MP-EV-03 Verify email with valid token => 200
+PASS MP-RL-01 6th consecutive failed login is throttled => 401,401,401,401,401,429
+
+59/59 passed

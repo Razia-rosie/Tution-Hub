@@ -1,0 +1,2 @@
+database tuitionhub_qa_e2e: 4 migration file(s), 4 recorded
+done
