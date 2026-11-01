@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { Button, Card, Chip, Field, Input, Select, StatusChip, Textarea } from '../../components/ui'
+import { childStage, reviewStage } from '../../components/FamilyVerification'
 import { fetchPrivateDocument, getAdminApplications, getAdminDocuments, getApplicationHistory, recordAdminInterviewOutcome, reviewAdminApplication, scheduleAdminInterview, type AdminApplication, type AuditEntry } from '../../lib/api'
 
 const STATUS_FILTERS = [
@@ -11,22 +12,24 @@ const STATUS_FILTERS = [
   { value: 'approved', label: 'Approved' },
   { value: 'rejected', label: 'Rejected' },
 ]
-const ROLE_FILTERS = [{ value: '', label: 'Tutors and coaching' }, { value: 'tutor', label: 'Private tutors' }, { value: 'coaching', label: 'Coaching centres' }]
+const ROLE_FILTERS = [{ value: '', label: 'All applicant types' }, { value: 'tutor', label: 'Private tutors' }, { value: 'coaching', label: 'Coaching centres' }, { value: 'parent', label: 'Parents / guardians' }, { value: 'student', label: 'Students' }]
+const ROLE_NAME: Record<string, string> = { tutor: 'Private tutor', coaching: 'Coaching centre', parent: 'Parent / guardian', student: 'Student' }
 const DECISIONS = [{ value: 'approved', label: 'Approve' }, { value: 'resubmission_required', label: 'Request corrections' }, { value: 'rejected', label: 'Reject' }]
 const label = (value: string) => ({ value, label: value.charAt(0).toUpperCase() + value.slice(1).replaceAll('_', ' ') })
 const when = (value?: string | null) => (value ? new Date(value).toLocaleString() : '—')
 const ACTIONS: Record<string, string> = {
   document_uploaded: 'Uploaded a picture', document_viewed: 'Viewed a picture', verification_submitted: 'Submitted application', verification_resubmitted: 'Resubmitted application',
   verification_approved: 'Approved', verification_rejected: 'Rejected', verification_resubmission_required: 'Requested corrections',
+  student_invitation_requested: 'Requested a student account', student_invitation_approved: 'Allowed student registration', student_invitation_rejected: 'Refused student registration', student_invitation_cancelled: 'Cancelled a student request', student_registered_from_invitation: 'Registered from a parent invitation',
   interview_scheduled: 'Scheduled interview', interview_completed: 'Completed interview', interview_cancelled: 'Cancelled interview', user_suspended: 'Suspended account', user_reactivated: 'Reactivated account',
 }
 
 type DocumentMeta = { id: string; document_type: string; original_name: string; mime_type: string; byte_size: number; uploaded_at: string }
 
 /** Manual review queue. Every decision is made by an administrator looking at the pictures; nothing is decided automatically. */
-export default function Verification() {
+export default function Verification({ fixedRole, title = 'Verification review' }: { fixedRole?: 'parent' | 'student'; title?: string } = {}) {
   const [status, setStatus] = useState('pending')
-  const [role, setRole] = useState('')
+  const [role, setRole] = useState<string>(fixedRole ?? '')
   const [applications, setApplications] = useState<AdminApplication[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<AdminApplication | null>(null)
@@ -89,14 +92,14 @@ export default function Verification() {
   const reasonRequired = decision !== 'approved'
   return (
     <div className="space-y-6">
-      <div><p className="text-sm text-gray-600">Administrator</p><h1 className="text-3xl">Verification review</h1><p className="mt-1 text-sm text-gray-600">Review submitted pictures and details by hand. Approval, rejection and correction requests are manual decisions.</p></div>
+      <div><p className="text-sm text-gray-600">Administrator</p><h1 className="text-3xl">{title}</h1><p className="mt-1 text-sm text-gray-600">Review submitted pictures and details by hand. Approval, rejection and correction requests are manual decisions.</p></div>
       {error && <Card className="border-danger-600 bg-danger-50"><p role="alert" className="text-sm text-danger-700">{error}</p></Card>}
       {message && <Card className="border-emerald-600 bg-emerald-50"><p role="status" className="text-sm text-emerald-700">{message}</p></Card>}
       <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
         <Card>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
             <Field label="Status">{(id) => <Select id={id} value={status} onChange={(e) => setStatus(e.target.value)} options={STATUS_FILTERS} />}</Field>
-            <Field label="Applicant type">{(id) => <Select id={id} value={role} onChange={(e) => setRole(e.target.value)} options={ROLE_FILTERS} />}</Field>
+            {!fixedRole && <Field label="Applicant type">{(id) => <Select id={id} value={role} onChange={(e) => setRole(e.target.value)} options={ROLE_FILTERS} />}</Field>}
           </div>
           <div className="mt-5 space-y-2" aria-live="polite">
             {loading && <p className="text-sm text-gray-600">Loading…</p>}
@@ -104,7 +107,7 @@ export default function Verification() {
             {applications.map((application) => (
               <button key={application.id} onClick={() => void open(application)} aria-current={selected?.id === application.id} className={`w-full rounded-input border p-3 text-left ${selected?.id === application.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-400'}`}>
                 <span className="block font-semibold">{application.name}</span>
-                <span className="block break-all text-xs text-gray-600">{application.role === 'coaching' ? 'Coaching centre' : 'Private tutor'} · {application.email}</span>
+                <span className="block break-all text-xs text-gray-600">{ROLE_NAME[application.role] ?? application.role} · {application.email}</span>
                 <span className="mt-1 block text-xs text-gray-600">Submitted {when(application.submitted_at)} · {application.document_count} picture{application.document_count === 1 ? '' : 's'}</span>
                 <span className="mt-2 flex flex-wrap gap-1"><StatusChip state={application.status} />{application.submission_count > 1 && <Chip tone="blue">Resubmitted ×{application.submission_count - 1}</Chip>}</span>
               </button>
@@ -113,7 +116,7 @@ export default function Verification() {
         </Card>
         {!selected ? <Card><p className="text-sm text-gray-600">Select an application to review its details, pictures and history.</p></Card> : (
           <Card>
-            <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl">{selected.name}</h2><p className="break-all text-sm text-gray-600">{selected.email} · {selected.role === 'coaching' ? 'Coaching centre' : 'Private tutor'}</p></div><StatusChip state={selected.status} /></div>
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl">{selected.name}</h2><p className="break-all text-sm text-gray-600">{selected.email} · {ROLE_NAME[selected.role] ?? selected.role}</p></div><StatusChip state={selected.status} /></div>
             <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
               <div><dt className="text-gray-600">Submitted</dt><dd className="font-medium">{when(selected.submitted_at)}</dd></div>
               <div><dt className="text-gray-600">Last decision</dt><dd className="font-medium">{when(selected.reviewed_at)}</dd></div>
@@ -122,6 +125,8 @@ export default function Verification() {
             <h3 className="mt-6 font-semibold">Submitted details</h3>
             <dl className="mt-2 grid gap-3 text-sm sm:grid-cols-2">{Object.entries(selected.profile ?? {}).filter(([, value]) => value !== null && value !== undefined).map(([key, value]) => <div key={key} className="min-w-0"><dt className="text-gray-600">{label(key).label}</dt><dd className="break-words font-medium">{Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd></div>)}</dl>
             {(selected.correction_request || selected.rejection_reason) && <div className="mt-4 rounded-input border border-warning-600 bg-warning-100 p-3 text-sm"><p className="font-semibold">{selected.rejection_reason ? 'Rejection reason' : 'Correction requested'}</p><p className="mt-1">{selected.rejection_reason ?? selected.correction_request}</p></div>}
+
+            {selected.family && <FamilyPanel application={selected} />}
 
             <section className="mt-6 border-t border-gray-100 pt-5">
               <h3 className="font-semibold">Pictures</h3>
@@ -150,12 +155,12 @@ export default function Verification() {
               </section>
             ) : <p className="mt-6 border-t border-gray-100 pt-5 text-sm text-gray-600">{selected.status === 'resubmission_required' ? 'Corrections were requested. The application returns to the Pending queue when the applicant resubmits.' : `This application has been decided (${label(selected.status).label}). The decision is final.`}</p>}
 
-            <section className="mt-6 border-t border-gray-100 pt-5">
+            {!fixedRole && <section className="mt-6 border-t border-gray-100 pt-5">
               <h3 className="font-semibold">Interview (optional)</h3>
               {reviewable && <><div className="mt-3 grid gap-3 sm:grid-cols-2"><Field label="Mode">{(id) => <Select id={id} value={mode} onChange={(e) => setMode(e.target.value as typeof mode)} options={['online', 'in_person'].map(label)} />}</Field><Field label="Date and time">{(id) => <Input id={id} type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />}</Field><Field label="Location or meeting link">{(id) => <Input id={id} value={location} onChange={(e) => setLocation(e.target.value)} />}</Field></div><Button className="mt-3" variant="secondary" loading={busy} disabled={!scheduledAt} onClick={() => void act(() => scheduleAdminInterview(selected.id, { mode, scheduled_at: new Date(scheduledAt).toISOString(), location_or_link: location }), 'Interview scheduled.').then((ok) => { if (ok) { setScheduledAt(''); setLocation('') } })}>Schedule interview</Button></>}
               {!selected.interviews?.length && <p className="mt-2 text-sm text-gray-600">No interviews.</p>}
               {selected.interviews?.map((interview) => <div key={interview.id} className="mt-4 rounded-input border border-gray-200 p-3 text-sm"><p className="font-semibold">{label(interview.mode).label} · {when(interview.scheduled_at)} · {interview.status}</p>{interview.location_or_link && <p className="mt-1 break-all text-gray-600">{interview.location_or_link}</p>}{interview.status === 'scheduled' && <><Textarea className="mt-3" value={outcomeNotes} onChange={(e) => setOutcomeNotes(e.target.value)} placeholder="Outcome notes" aria-label="Interview outcome notes" /><div className="mt-2 flex gap-2"><Button size="sm" onClick={() => void act(() => recordAdminInterviewOutcome(selected.id, interview.id, 'completed', outcomeNotes), 'Interview marked completed.')}>Record completed</Button><Button size="sm" variant="secondary" onClick={() => void act(() => recordAdminInterviewOutcome(selected.id, interview.id, 'cancelled', outcomeNotes), 'Interview cancelled.')}>Cancel interview</Button></div></>}</div>)}
-            </section>
+            </section>}
 
             <section className="mt-6 border-t border-gray-100 pt-5">
               <h3 className="font-semibold">History</h3>
@@ -174,5 +179,44 @@ export default function Verification() {
         </div>
       )}
     </div>
+  )
+}
+
+/** The other side of a family review: a parent's child requests, or a student's inviting parent. */
+function FamilyPanel({ application }: { application: AdminApplication }) {
+  const family = application.family
+  if (application.role === 'parent') {
+    const invitations = family?.invitations ?? []
+    return (
+      <section className="mt-6 border-t border-gray-100 pt-5">
+        <h3 className="font-semibold">Child student accounts</h3>
+        {invitations.length === 0 && <p className="mt-2 text-sm text-gray-600">This parent has not submitted a child email yet.</p>}
+        <ul className="mt-2 space-y-2">{invitations.map((inv) => { const c = childStage(inv); return (
+          <li key={inv.id} className="rounded-input border border-gray-200 p-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2"><span className="break-all font-semibold">{inv.child_email}{inv.child_name ? ` · ${inv.child_name}` : ''}</span><Chip tone={c.tone}>{c.label}</Chip></div>
+            <p className="mt-1 text-xs text-gray-600">Requested {when(inv.created_at)} · {inv.relationship}{inv.student_name ? ` · registered as ${inv.student_name}` : ''}</p>
+          </li>
+        ) })}</ul>
+        <p className="mt-2 text-xs text-gray-600">Student registration permission is granted separately under Parent &amp; Student Verification → Student registration requests, after this parent is approved.</p>
+      </section>
+    )
+  }
+  const parent = family?.parent
+  const ps = parent ? reviewStage('parent', parent.parent_account_status, parent.parent_verification_status) : null
+  return (
+    <section className="mt-6 border-t border-gray-100 pt-5">
+      <h3 className="font-semibold">Linked parent / guardian</h3>
+      {!parent ? <p className="mt-2 text-sm text-danger-700">This student has no inviting parent. A student can only be approved when linked to an approved parent.</p> : (
+        <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
+          <div><dt className="text-gray-600">Parent</dt><dd className="break-all font-medium">{parent.parent_name} · {parent.parent_email}</dd></div>
+          <div><dt className="text-gray-600">Parent verification</dt><dd>{ps && <Chip tone={ps.tone}>{ps.label}</Chip>}</dd></div>
+          <div><dt className="text-gray-600">Invited email</dt><dd className="break-all font-medium">{parent.invited_email}{parent.invited_email === application.email ? ' (matches)' : ' (does not match!)'}</dd></div>
+          <div><dt className="text-gray-600">Relationship</dt><dd className="font-medium">{parent.relationship}</dd></div>
+          <div><dt className="text-gray-600">Registered</dt><dd className="font-medium">{when(parent.registered_at)}</dd></div>
+          <div><dt className="text-gray-600">Link</dt><dd><StatusChip state={parent.link_status ?? 'pending'} /></dd></div>
+        </dl>
+      )}
+      {ps && ps.label !== 'Approved' && <p className="mt-2 text-sm text-warning-600">Approve the parent first; the student cannot be approved while the parent is not.</p>}
+    </section>
   )
 }

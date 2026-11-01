@@ -70,6 +70,19 @@ async function verify(admin, user, docs, profile) {
   return sub.status === 202 && d.status === 204
 }
 
+async function verifyParent(admin, parent, name) {
+  return verify(admin, parent, [['parent_nid', PNG], ['child_birth_certificate', PNG]], { display_name: name, address: 'House 1, Road 2, Mirpur, Dhaka' })
+}
+
+async function invitedStudent(admin, inviter, label, name) {
+  const inv = await POST('/api/v1/workflow/family/invitations', inviter.token, { child_email: email(label), relationship: 'mother' })
+  await POST(`/api/v1/workflow/admin/student-invitations/${inv.data?.invitation?.id}/decision`, admin, { decision: 'approved' })
+  const student = await register(label, 'student', name)
+  const ok = await verify(admin, student, [['birth_certificate', PNG]], { display_name: name, birth_date: '2010-01-01', class_name: 'HSC', institution: 'Dhaka College' })
+  check(`${label}: invited, registered and verified`, inv.status === 201 && ok)
+  return student
+}
+
 async function main() {
   const adminLogin = await POST('/api/v1/auth/login', undefined, { email: ADMIN_EMAIL, password: ADMIN_PASSWORD })
   const admin = adminLogin.data.tokens.access_token
@@ -81,8 +94,14 @@ async function main() {
   const coaching2 = await register('coaching2', 'coaching')
   const parent = await register('parent', 'parent', `Parent ${run}`)
   const parent2 = await register('parent2', 'parent')
-  const student = await register('student', 'student', `Student ${run}`)
-  const student2 = await register('student2', 'student', `Learner ${run}`)
+  // Parents and students are verified by hand too; students can only sign up
+  // from an invitation an approved parent made and an administrator allowed.
+  check('parent: verified by admin', await verifyParent(admin, parent, `Parent ${run}`))
+  check('parent2: verified by admin', await verifyParent(admin, parent2, `PF parent2 ${run}`))
+  const inviter = await register('inviter', 'parent', `Inviter ${run}`)
+  check('inviter: verified by admin', await verifyParent(admin, inviter, `Inviter ${run}`))
+  const student = await invitedStudent(admin, inviter, 'student', `Student ${run}`)
+  const student2 = await invitedStudent(admin, inviter, 'student2', `Learner ${run}`)
 
   // ---------- Journey 1a: tutor verification and profile ----------
   check('tutor: verified by admin', await verify(admin, tutor, [['identity', PNG]], { display_name: `Tutor ${run}`, education: 'BSc Physics, DU', subjects: ['Physics', 'Mathematics'], classes: ['HSC', 'Class 10'], areas: ['Uttara', 'Mirpur'] }))

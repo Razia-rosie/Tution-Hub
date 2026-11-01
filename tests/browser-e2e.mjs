@@ -9,6 +9,7 @@
 // The test creates new accounts with random emails and records admin decisions.
 
 import puppeteer from 'puppeteer-core'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const WEB = process.env.E2E_WEB ?? 'http://127.0.0.1:5174'
@@ -99,6 +100,29 @@ async function signUp(page, role, name, label) {
   await fill(page, 'Confirm password', password)
   await page.evaluate(() => document.querySelector('input[type=checkbox]').click())
   await click(page, 'Continue', { exact: true })
+}
+
+/** Creates a student the only way allowed: a verified parent's invitation that an administrator approved. */
+async function invitedStudentThroughApi(label) {
+  const api = async (method, route, token, body, form) => {
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    if (body) headers['Content-Type'] = 'application/json'
+    const r = await fetch(WEB + route, { method, headers, body: form ?? (body ? JSON.stringify(body) : undefined) })
+    return { status: r.status, data: await r.json().catch(() => null) }
+  }
+  const admin = (await api('POST', '/api/v1/auth/login', null, { email: ADMIN_EMAIL, password: ADMIN_PASSWORD })).data.tokens.access_token
+  const parent = (await api('POST', '/api/v1/auth/register', null, { name: `Inviter ${run}`, email: email(`inviter-${label}`), password, role: 'parent' })).data.tokens.access_token
+  for (const type of ['parent_nid', 'child_birth_certificate']) {
+    const f = new FormData(); f.append('document_type', type); f.append('document', new Blob([readFileSync(fixture('id-card.png'))], { type: 'image/png' }), 'id.png')
+    await api('POST', '/api/v1/workflow/verification/documents', parent, null, f)
+  }
+  await api('PUT', '/api/v1/workflow/profile', parent, { display_name: `Inviter ${run}`, address: 'Mirpur, Dhaka' })
+  const app = (await api('POST', '/api/v1/workflow/verification/submit', parent)).data.verification.id
+  await api('POST', `/api/v1/workflow/admin/verifications/${app}/decision`, admin, { decision: 'approved' })
+  const inv = (await api('POST', '/api/v1/workflow/family/invitations', parent, { child_email: email(label), relationship: 'mother' })).data.invitation.id
+  await api('POST', `/api/v1/workflow/admin/student-invitations/${inv}/decision`, admin, { decision: 'approved' })
+  const r = await api('POST', '/api/v1/auth/register', null, { name: `Browser ${label}`, email: email(label), password, role: 'student' })
+  if (r.status !== 201) throw new Error(`invited student: ${r.status} ${JSON.stringify(r.data)}`)
 }
 
 async function signIn(page, who, pw, admin = false) {
@@ -243,13 +267,18 @@ async function main() {
 
     // ---------- Every role's screens at three widths ----------
     const sweepRoles = { tutor: [email('tutor'), password], coaching: [email('coaching'), password], admin: [ADMIN_EMAIL, ADMIN_PASSWORD] }
-    for (const role of ['student', 'parent']) {
-      const p = await newPage(browser)
-      await signUp(p, role, `Browser ${role}`, role)
-      await waitPath(p, '/auth/gate')
-      sweepRoles[role] = [email(role), password]
-      await p.browserContext().close()
-    }
+    const parentPage = await newPage(browser)
+    await signUp(parentPage, 'parent', 'Browser parent', 'parent')
+    check('parent: registration continues into verification', await waitPath(parentPage, '/app/parent/verification'))
+    sweepRoles.parent = [email('parent'), password]
+    await parentPage.browserContext().close()
+    // A student cannot sign up without an invitation; the reason is shown on the form.
+    const studentPage = await newPage(browser)
+    await signUp(studentPage, 'student', 'Browser student', 'student')
+    check('student: uninvited sign-up is refused with a reason', await waitText(studentPage, 'has not been invited') && (await path(studentPage)) === '/signup/student')
+    await studentPage.browserContext().close()
+    await invitedStudentThroughApi('student')
+    sweepRoles.student = [email('student'), password]
     for (const [role, [who, pw]] of Object.entries(sweepRoles)) {
       for (const [w, h, label] of [[375, 812, 'mobile'], [768, 1024, 'tablet'], [1280, 900, 'desktop']]) {
         const p = await newPage(browser, w, h)

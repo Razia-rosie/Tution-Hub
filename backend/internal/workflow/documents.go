@@ -22,7 +22,9 @@ type DocumentRequirement struct {
 }
 
 // documentRequirements lists the picture types each verifiable role may upload.
-// Only tutors and coaching centres go through verification.
+// Every public role is verified by hand: tutors and coaching centres before
+// they can work, parents before their child may sign up, and students before
+// they get full access.
 var documentRequirements = map[string][]DocumentRequirement{
 	"tutor": {
 		{Type: "identity", Label: "National ID, passport or birth certificate", Required: true},
@@ -32,7 +34,33 @@ var documentRequirements = map[string][]DocumentRequirement{
 		{Type: "trade_license", Label: "Trade licence or registration certificate", Required: true},
 		{Type: "owner_identity", Label: "Owner or director national ID", Required: true},
 	},
+	"parent": {
+		{Type: "parent_nid", Label: "Your national ID (NID)", Required: true},
+		{Type: "child_birth_certificate", Label: "Your child's birth certificate", Required: true},
+	},
+	"student": {
+		{Type: "birth_certificate", Label: "Your birth certificate", Required: true},
+	},
 }
+
+// profileRequirement is a role_profiles column a family applicant must fill in
+// before submitting. Tutors and coaching centres use completion_percent instead.
+type profileRequirement struct{ Column, Label string }
+
+var familyProfileRequirements = map[string][]profileRequirement{
+	"parent": {
+		{"display_name", "Your full name"},
+		{"address", "Your address"},
+	},
+	"student": {
+		{"display_name", "Your full name"},
+		{"birth_date", "Your date of birth"},
+		{"class_name", "Your class"},
+		{"institution", "Your school or college"},
+	},
+}
+
+func familyRole(role string) bool { return role == "parent" || role == "student" }
 
 func RequirementsFor(role string) []DocumentRequirement { return documentRequirements[role] }
 

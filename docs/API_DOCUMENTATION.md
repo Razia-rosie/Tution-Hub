@@ -22,7 +22,8 @@ API test suites ([TESTING.md](TESTING.md)).
 
 | Method | Path | Access | Notes |
 |---|---|---|---|
-| POST | `/register` | public, rate limited | `name, email, password, role` (tutor, student, parent, coaching). Tutors/coaching start `pending`, others `active` |
+| POST | `/register` | public, rate limited | `name, email, password, role` (tutor, student, parent, coaching). Every role starts `pending`. A student needs an admin-approved parent invitation for that exact email, else 403 with `code` `invitation_not_invited`, `_pending_approval`, `_expired`, `_used` or `_not_authorized` |
+| POST | `/student-invitation/check` | public, rate limited | `{email}` in the body → `{allowed, code, message}` for the student sign-up form |
 | POST | `/login` | public, rate limited | Failed attempts limited per account+IP and per IP |
 | POST | `/refresh` | public | Body `refresh_token`, or cookie `th_refresh` with header `X-Session-Mode: cookie` |
 | POST | `/logout` | public | Revokes the refresh token (body or cookie) |
@@ -40,11 +41,14 @@ With `X-Session-Mode: cookie`, register/login/refresh set the refresh token as a
 |---|---|---|
 | GET | `/dashboard` | Account, profile, verification, own documents, required document types |
 | PUT | `/profile` | Whitelisted profile fields; fields under review are locked while pending |
-| POST | `/verification/documents` | Multipart `document_type`, `document`; tutor/coaching only; creates a draft application |
+| POST | `/verification/documents` | Multipart `document_type`, `document`; types per role (parent: `parent_nid`, `child_birth_certificate`; student: `birth_certificate`); creates a draft application |
 | GET | `/verification/documents/:id` | The picture; owner or admin only (others 404) |
 | POST | `/verification/submit` | 422 with `missing` until required pictures and profile exist |
 | GET | `/notifications` · POST `/notifications/read` | `{"id"}` or `{}` for all |
-| GET/POST | `/relationships` | Older guardian-link endpoint (superseded by `/links`) |
+| GET | `/family` | Parent: own child invitations with each student's status. Student: the inviting parent and link status |
+| POST | `/family/invitations` | Parent only, after submitting own verification: `child_email, relationship, child_name?`. 409 if the email is used by an account or a live invitation |
+| POST | `/family/invitations/:id/cancel` | Parent, own pending or approved invitation |
+| GET/POST | `/relationships` | Older guardian-link endpoint (superseded by `/links`); POST needs an active account |
 | GET | `/tuition` | Older listing endpoint for active accounts (superseded by `/tuition-posts`) |
 
 Admin — `/workflow/admin` (role admin):
@@ -57,6 +61,13 @@ Admin — `/workflow/admin` (role admin):
 | POST | `/verifications/:id/interviews` · `/verifications/:id/interviews/:interviewID/outcome` | Optional interview step |
 | GET | `/stats` · `/users?role=&status=&q=&limit=&offset=` · `/audit-logs?action=` | Dashboard data |
 | POST | `/users/:id/suspend` · `/users/:id/reactivate` | Suspension revokes all sessions |
+| GET | `/student-invitations?status=` | `pending_approval`, `approved`, `registered`, `rejected`, `expired` or all; with parent and student statuses |
+| POST | `/student-invitations/:id/decision` | `approved` (parent must be approved; permission lasts 30 days) or `rejected` (reason ≥ 10 chars) |
+
+A student application can only be approved while its inviting parent is approved; approving it
+approves the guardian link, rejecting it rejects the link. Rejecting a parent withdraws their
+unused invitations. Parents and students cannot make platform write requests (posts, chats,
+links, messages…) until their own verification is approved.
 
 ## Public discovery — `/public` (optional)
 

@@ -2,7 +2,7 @@ import {
   LayoutDashboard, Search, FileText, Users, CalendarDays, CheckSquare, BookOpen, ClipboardList,
   LineChart, Star, Trophy, Award, Wallet, ShieldCheck, User, MessageSquare, Bell, ShieldAlert,
   Home, GraduationCap, Baby, GitCompare, Building2, Layers, School, FileBarChart, AlertTriangle,
-  Gavel, Settings, BarChart3, MapPin, MoreHorizontal, Flag, Inbox,
+  Gavel, Settings, BarChart3, MapPin, MoreHorizontal, Flag, Inbox, UserCheck,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -33,10 +33,10 @@ export const NAV: Record<Role, NavItem[]> = {
     n('home', 'Home', Home, true), n('my-tuition', 'My Tuition', GraduationCap), n('schedule', 'Schedule', CalendarDays, true),
     n('attendance', 'Attendance', CheckSquare), n('homework', 'Homework', BookOpen, true), n('assignments', 'Assignments', ClipboardList),
     n('progress', 'Progress', LineChart), n('tutor', 'Tutor', User), n('messages', 'Messages', MessageSquare, true),
-    n('profile', 'Profile', User), n('find-tutor', 'Find Tutor', Search), n('notifications', 'Notifications', Bell), n('safety', 'Safety', ShieldAlert),
+    n('profile', 'Profile', User), n('find-tutor', 'Find Tutor', Search), n('verification', 'Verification', ShieldCheck), n('notifications', 'Notifications', Bell), n('safety', 'Safety', ShieldAlert),
   ],
   parent: [
-    n('dashboard', 'Dashboard', LayoutDashboard, true), n('children', 'Children', Baby, true), n('find-tutor', 'Find Tutor', Search),
+    n('dashboard', 'Dashboard', LayoutDashboard, true), n('verification', 'Verification', ShieldCheck), n('children', 'Children', Baby, true), n('find-tutor', 'Find Tutor', Search),
     n('my-posts', 'My Posts', FileText), n('tuitions', 'Active Tuitions', GraduationCap, true), n('schedule', 'Schedule', CalendarDays),
     n('attendance', 'Attendance', CheckSquare), n('homework', 'Homework & Assignments', BookOpen), n('progress', 'Progress & Reports', LineChart),
     n('payments', 'Payments', Wallet), n('messages', 'Messages', MessageSquare, true), n('notifications', 'Notifications', Bell),
@@ -51,7 +51,7 @@ export const NAV: Record<Role, NavItem[]> = {
   ],
   admin: [
     n('overview', 'Overview', LayoutDashboard, true), n('users', 'Users', Users, true), n('tutors', 'Tutors', User), n('students', 'Students', GraduationCap),
-    n('parents', 'Parents', Baby), n('coaching', 'Coaching', Building2), n('verification', 'Verification', ShieldCheck, true),
+    n('parents', 'Parents', Baby), n('coaching', 'Coaching', Building2), n('verification', 'Verification', ShieldCheck, true), n('family', 'Parent & Student Verification', UserCheck),
     n('tuition-posts', 'Tuition Posts', FileText), n('matches', 'Matches', GitCompare), n('reports', 'Reports', Flag),
     n('complaints', 'Complaints', AlertTriangle), n('reviews', 'Reviews', Star), n('awards', 'Awards', Award), n('payments', 'Payments', Wallet),
     n('safety', 'Safety', ShieldAlert), n('analytics', 'Analytics', LineChart), n('appeals', 'Appeals', Gavel), n('settings', 'Settings', Settings),
@@ -62,5 +62,4 @@ export const NAV: Record<Role, NavItem[]> = {
 export const MORE_ICON = MoreHorizontal
 export const ICONS_MISC = { MapPin, Inbox }
 
-export const verifyPath = (role: Role) =>
-  `/app/${role}/${role === 'parent' ? 'settings/verification' : role === 'student' ? 'profile/verification' : 'verification'}`
+export const verifyPath = (role: Role) => `/app/${role}/verification`

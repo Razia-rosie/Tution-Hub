@@ -18,7 +18,7 @@ func TestSubmitVerificationRefusesNonVerifiableRole(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT role, account_status FROM users WHERE id = ? FOR UPDATE")).
 		WithArgs("user").
-		WillReturnRows(sqlmock.NewRows([]string{"role", "account_status"}).AddRow("student", "active"))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "account_status"}).AddRow("admin", "active"))
 	mock.ExpectRollback()
 	if _, err := service.SubmitVerification(context.Background(), "user"); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("expected ErrForbidden, got %v", err)
@@ -94,9 +94,9 @@ func TestReviewVerificationRejectsDecidedApplication(t *testing.T) {
 	service, mock, closeDB := testWorkflowService(t)
 	defer closeDB()
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT user_id, status FROM verification_applications WHERE id = ? FOR UPDATE")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT v.user_id, v.status, u.role FROM verification_applications v JOIN users u ON u.id = v.user_id WHERE v.id = ? FOR UPDATE")).
 		WithArgs("app").
-		WillReturnRows(sqlmock.NewRows([]string{"user_id", "status"}).AddRow("user", "approved"))
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "status", "role"}).AddRow("user", "approved", "tutor"))
 	mock.ExpectRollback()
 	if err := service.ReviewVerification(context.Background(), "admin", "app", "approved", ""); !errors.Is(err, ErrConflict) {
 		t.Fatalf("expected ErrConflict, got %v", err)

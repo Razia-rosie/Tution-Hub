@@ -28,6 +28,9 @@ func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, service *Serv
 	api.GET("/relationships", relationships(service))
 	api.POST("/relationships", createRelationship(service))
 	api.GET("/tuition", requireActive(service, tuition(service)))
+	api.GET("/family", family(service))
+	api.POST("/family/invitations", createInvitation(service))
+	api.POST("/family/invitations/:id/cancel", cancelInvitation(service))
 
 	admin := api.Group("/admin")
 	admin.Use(requireAdmin())
@@ -42,6 +45,8 @@ func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, service *Serv
 	admin.POST("/users/:id/suspend", setSuspended(service, true))
 	admin.POST("/users/:id/reactivate", setSuspended(service, false))
 	admin.GET("/audit-logs", auditLogs(service))
+	admin.GET("/student-invitations", listInvitations(service))
+	admin.POST("/student-invitations/:id/decision", reviewInvitation(service))
 }
 
 func userID(c *gin.Context) string { return c.GetString("user_id") }
@@ -90,7 +95,7 @@ func submitVerification(s *Service) gin.HandlerFunc {
 			return
 		}
 		if errors.Is(err, ErrForbidden) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "only tutors and coaching centres go through verification"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "this account type does not go through verification"})
 			return
 		}
 		if errors.Is(err, ErrInvalidState) {
@@ -219,6 +224,10 @@ func createRelationship(s *Service) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "student_id and relationship are required"})
 			return
 		}
+		if c.GetString("account_status") != "active" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "your account must be verified before linking a student"})
+			return
+		}
 		if err := s.CreateRelationship(c.Request.Context(), userID(c), req.StudentID, req.Relationship); errors.Is(err, ErrForbidden) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "only a guardian can request a student link"})
 			return
@@ -335,6 +344,9 @@ func reviewVerification(s *Service) gin.HandlerFunc {
 			return
 		} else if errors.Is(err, ErrConflict) {
 			c.JSON(http.StatusConflict, gin.H{"error": "this application has already been decided"})
+			return
+		} else if errors.Is(err, ErrParentNotApproved) {
+			c.JSON(http.StatusConflict, gin.H{"error": "a student can only be approved once the linked parent's own verification is approved"})
 			return
 		} else if err != nil {
 			serverError(c, "could not save review decision", err)
@@ -465,5 +477,110 @@ func auditLogs(s *Service) gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"entries": entries})
+	}
+}
+
+func family(s *Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		out, err := s.Family(c.Request.Context(), userID(c), c.GetString("role"))
+		if errors.Is(err, ErrForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only parents and students have family links"})
+			return
+		}
+		if err != nil {
+			serverError(c, "could not load family links", err)
+			return
+		}
+		c.JSON(http.StatusOK, out)
+	}
+}
+
+func createInvitation(s *Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.GetString("role") != "parent" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only a parent or guardian can request a student account"})
+			return
+		}
+		var req struct {
+			ChildEmail   string `json:"child_email"`
+			ChildName    string `json:"child_name"`
+			Relationship string `json:"relationship"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "child_email and relationship are required"})
+			return
+		}
+		inv, err := s.CreateInvitation(c.Request.Context(), userID(c), req.ChildEmail, req.ChildName, req.Relationship)
+		switch {
+		case errors.Is(err, ErrInvalidState):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "enter a valid email for your child and your relationship to them"})
+		case errors.Is(err, ErrParentNotApproved):
+			c.JSON(http.StatusConflict, gin.H{"error": "submit your own verification (NID and your child's birth certificate) before requesting a student account"})
+		case errors.Is(err, ErrEmailUnavailable):
+			c.JSON(http.StatusConflict, gin.H{"error": "this email is already used by an account or another student request; use a separate email for your child"})
+		case errors.Is(err, ErrConflict):
+			c.JSON(http.StatusConflict, gin.H{"error": "you have reached the limit of open student requests"})
+		case errors.Is(err, ErrForbidden):
+			c.JSON(http.StatusForbidden, gin.H{"error": "only a parent or guardian can request a student account"})
+		case err != nil:
+			serverError(c, "could not save the student request", err)
+		default:
+			c.JSON(http.StatusCreated, gin.H{"invitation": inv})
+		}
+	}
+}
+
+func cancelInvitation(s *Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		err := s.CancelInvitation(c.Request.Context(), userID(c), c.Param("id"))
+		switch {
+		case errors.Is(err, ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "student request not found"})
+		case errors.Is(err, ErrConflict):
+			c.JSON(http.StatusConflict, gin.H{"error": "this request can no longer be cancelled"})
+		case err != nil:
+			serverError(c, "could not cancel the student request", err)
+		default:
+			c.Status(http.StatusNoContent)
+		}
+	}
+}
+
+func listInvitations(s *Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		items, err := s.ListInvitations(c.Request.Context(), c.Query("status"))
+		if err != nil {
+			serverError(c, "could not load student requests", err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"invitations": items})
+	}
+}
+
+func reviewInvitation(s *Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Decision string `json:"decision" binding:"required"`
+			Reason   string `json:"reason"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "decision is required"})
+			return
+		}
+		err := s.ReviewInvitation(c.Request.Context(), userID(c), c.Param("id"), req.Decision, req.Reason)
+		switch {
+		case errors.Is(err, ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "student request not found"})
+		case errors.Is(err, ErrInvalidState):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "decision must be approved or rejected; rejections need a reason of at least ten characters"})
+		case errors.Is(err, ErrParentNotApproved):
+			c.JSON(http.StatusConflict, gin.H{"error": "approve the parent's own verification before allowing the student to register"})
+		case errors.Is(err, ErrConflict):
+			c.JSON(http.StatusConflict, gin.H{"error": "this request has already been decided"})
+		case err != nil:
+			serverError(c, "could not save the decision", err)
+		default:
+			c.Status(http.StatusNoContent)
+		}
 	}
 }

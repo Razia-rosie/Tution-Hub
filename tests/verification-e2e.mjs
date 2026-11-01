@@ -76,7 +76,7 @@ async function main() {
   const tutor = await register('tutor', 'tutor')
   check('auth: tutor registers as pending', tutor.status === 201 && tutor.user?.role === 'tutor' && tutor.user.account_status === 'pending', JSON.stringify(tutor.data))
   const parentEarly = await register('parent0', 'parent')
-  check('auth: parents start active (no verification)', parentEarly.user?.account_status === 'active')
+  check('auth: parents start pending (manual verification)', parentEarly.user?.account_status === 'pending')
   check('auth: duplicate email rejected', (await call('POST', '/api/v1/auth/register', { body: { name: 'Dup', email: email('tutor'), password, role: 'tutor' } })).status === 409)
   check('auth: cannot self-register as admin', (await call('POST', '/api/v1/auth/register', { body: { name: 'Evil', email: email('evil'), password, role: 'admin' } })).status === 400)
   check('auth: short password rejected', (await call('POST', '/api/v1/auth/register', { body: { name: 'Weak', email: email('weak'), password: 'short', role: 'tutor' } })).status === 400)
@@ -106,7 +106,7 @@ async function main() {
   check('cookie mode: logout clears the cookie', /th_refresh=;|Max-Age=0/i.test((await fetch(API + '/api/v1/auth/logout', { method: 'POST', headers: { Cookie: rotated, 'X-Session-Mode': 'cookie' } })).headers.get('set-cookie') ?? ''))
   check('cookie mode: revoked cookie cannot refresh', (await fetch(API + '/api/v1/auth/refresh', { method: 'POST', headers: { Cookie: rotated, 'X-Session-Mode': 'cookie' } })).status === 401)
 
-  const victim = await register('ratelimit', 'student')
+  const victim = await register('ratelimit', 'parent')
   const codes = []
   for (let i = 0; i < 6; i++) codes.push((await call('POST', '/api/v1/auth/login', { body: { email: email('ratelimit'), password: 'wrong-password-x' } })).status)
   check('auth: 6th failed login for one account is 429', codes.slice(0, 5).every((c) => c === 401) && codes[5] === 429, JSON.stringify(codes))
@@ -177,12 +177,9 @@ async function main() {
   const coachingApp = sub.data.verification.id
   check('pictures: cannot upload into another user\'s application', (await upload(coaching.token, 'trade_license', PNG, 'x.png', 'image/png', tutorApp)).status === 403)
 
-  // ---------- Students and parents are not verified ----------
-  const student = await register('student', 'student')
-  check('student: starts active', student.user.account_status === 'active')
-  check('student: cannot upload verification pictures', (await upload(student.token, 'identity', PNG, 'x.png', 'image/png')).status === 403)
-  check('student: cannot submit verification', (await submit(student.token)).status === 403)
-  check('parent: cannot submit verification', (await submit(parentEarly.token)).status === 403)
+  // ---------- Parents and students use their own documents ----------
+  check('parent: tutor document type rejected', (await upload(parentEarly.token, 'identity', PNG, 'x.png', 'image/png')).status === 400)
+  check('student: cannot register without a parent invitation', (await register('student', 'student')).status === 403)
 
   // A draft that was never submitted must not reach the review queue.
   const drafter = await register('drafter', 'tutor')
@@ -192,6 +189,21 @@ async function main() {
   const adminLogin = await call('POST', '/api/v1/auth/login', { body: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD } })
   check('admin: login', adminLogin.status === 200 && adminLogin.data.user?.role === 'admin')
   const admin = adminLogin.data.tokens.access_token
+
+  // A verified parent invites the student used by the admin checks below (tests/family-e2e.mjs covers this flow in depth).
+  await upload(parentEarly.token, 'parent_nid', PNG, 'nid.png', 'image/png')
+  await upload(parentEarly.token, 'child_birth_certificate', JPEG, 'bc.jpg', 'image/jpeg')
+  await saveProfile(parentEarly.token, { display_name: 'E2E Parent', address: 'House 1, Road 2, Mirpur' })
+  const parentApp = (await submit(parentEarly.token)).data?.verification?.id
+  check('parent: approved by admin', (await call('POST', `/api/v1/workflow/admin/verifications/${parentApp}/decision`, { token: admin, body: { decision: 'approved' } })).status === 204)
+  const inv = await call('POST', '/api/v1/workflow/family/invitations', { token: parentEarly.token, body: { child_email: email('student'), relationship: 'mother' } })
+  check('parent: student registration allowed', (await call('POST', `/api/v1/workflow/admin/student-invitations/${inv.data?.invitation?.id}/decision`, { token: admin, body: { decision: 'approved' } })).status === 204)
+  const student = await register('student', 'student')
+  check('student: registers pending from the invitation', student.status === 201 && student.user.account_status === 'pending')
+  await upload(student.token, 'birth_certificate', PNG, 'bc.png', 'image/png')
+  await saveProfile(student.token, { display_name: 'E2E Student', birth_date: '2011-03-04', class_name: 'Class 9', institution: 'E2E School' })
+  const studentApp = (await submit(student.token)).data?.verification?.id
+  check('student: approved by admin', (await call('POST', `/api/v1/workflow/admin/verifications/${studentApp}/decision`, { token: admin, body: { decision: 'approved' } })).status === 204)
 
   let list = await call('GET', '/api/v1/workflow/admin/verifications?status=pending', { token: admin })
   const ids = (list.data?.applications ?? []).map((a) => a.id)
@@ -297,7 +309,8 @@ async function main() {
 
   // Relationships
   const parent = await register('parent', 'parent')
-  check('relationship: parent links student', (await call('POST', '/api/v1/workflow/relationships', { token: parent.token, body: { student_id: student.user.id, relationship: 'mother' } })).status === 201)
+  check('relationship: unverified parent cannot link a student', (await call('POST', '/api/v1/workflow/relationships', { token: parent.token, body: { student_id: student.user.id, relationship: 'mother' } })).status === 403)
+  check('relationship: verified parent links student', (await call('POST', '/api/v1/workflow/relationships', { token: parentEarly.token, body: { student_id: student.user.id, relationship: 'mother' } })).status === 201)
   check('relationship: tutor cannot link student', (await call('POST', '/api/v1/workflow/relationships', { token: tutor.token, body: { student_id: student.user.id, relationship: 'tutor' } })).status === 403)
 
   // Logout and token reuse

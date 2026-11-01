@@ -100,6 +100,9 @@ type AdminApplication struct {
 	// SubmissionCount > 1 marks a resubmitted application.
 	SubmissionCount int `db:"submission_count" json:"submission_count"`
 	DocumentCount   int `db:"document_count" json:"document_count"`
+	// Family links a parent application to its child invitations, and a
+	// student application to the parent who invited them.
+	Family any `db:"-" json:"family,omitempty"`
 }
 
 func (s *Service) GetDashboard(ctx context.Context, userID string) (map[string]any, error) {
@@ -152,6 +155,12 @@ func (s *Service) UpsertProfile(ctx context.Context, userID string, input map[st
 	// The reviewer must see exactly what was submitted, so the fields under review
 	// freeze while an application is pending; other profile fields stay editable.
 	reviewed := map[string]bool{"display_name": true, "institution": true, "education": true, "subjects": true, "classes": true, "areas": true}
+	if familyRole(lock.Role) {
+		reviewed = map[string]bool{}
+		for _, r := range familyProfileRequirements[lock.Role] {
+			reviewed[r.Column] = true
+		}
+	}
 	if verifiableRole(lock.Role) && (lock.Status.String == "pending" || lock.Status.String == "under_review") {
 		for key := range input {
 			if reviewed[key] {
@@ -230,8 +239,11 @@ func (s *Service) SubmitVerification(ctx context.Context, userID string) (Verifi
 		return Verification{}, ErrForbidden
 	}
 	// Approved, rejected, suspended or interviewing accounts cannot reset their
-	// application to pending by submitting again.
-	if account.Status != "pending" && account.Status != "resubmission_required" {
+	// application to pending by submitting again. Parents and students who
+	// registered before family verification existed are already active; they
+	// may still submit once, and keep their access while it is reviewed.
+	grandfathered := familyRole(account.Role) && account.Status == "active"
+	if account.Status != "pending" && account.Status != "resubmission_required" && !grandfathered {
 		return Verification{}, ErrInvalidState
 	}
 	var application struct {
@@ -258,12 +270,20 @@ func (s *Service) SubmitVerification(ctx context.Context, userID string) (Verifi
 		}
 	}
 	missing = append(missing, missingRequired(account.Role, uploaded)...)
-	var completion uint8
-	if err = tx.GetContext(ctx, &completion, `SELECT COALESCE((SELECT completion_percent FROM role_profiles WHERE user_id = ?), 0)`, userID); err != nil {
-		return Verification{}, err
-	}
-	if completion < 100 {
-		missing = append(missing, "Complete profile details")
+	if familyRole(account.Role) {
+		profileMissing, err := s.missingFamilyProfile(ctx, tx, account.Role, userID)
+		if err != nil {
+			return Verification{}, err
+		}
+		missing = append(missing, profileMissing...)
+	} else {
+		var completion uint8
+		if err = tx.GetContext(ctx, &completion, `SELECT COALESCE((SELECT completion_percent FROM role_profiles WHERE user_id = ?), 0)`, userID); err != nil {
+			return Verification{}, err
+		}
+		if completion < 100 {
+			missing = append(missing, "Complete profile details")
+		}
 	}
 	if len(missing) > 0 {
 		return Verification{}, &IncompleteError{Missing: missing}
@@ -272,8 +292,10 @@ func (s *Service) SubmitVerification(ctx context.Context, userID string) (Verifi
 	if _, err = tx.ExecContext(ctx, `UPDATE verification_applications SET status = 'pending', submitted_at = UTC_TIMESTAMP(6), rejection_reason = NULL, correction_request = NULL WHERE id = ?`, application.ID); err != nil {
 		return Verification{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE users SET account_status = 'pending' WHERE id = ?`, userID); err != nil {
-		return Verification{}, err
+	if !grandfathered {
+		if _, err = tx.ExecContext(ctx, `UPDATE users SET account_status = 'pending' WHERE id = ?`, userID); err != nil {
+			return Verification{}, err
+		}
 	}
 	action := "verification_submitted"
 	if application.Status == "resubmission_required" {
@@ -304,8 +326,9 @@ func (s *Service) ReviewVerification(ctx context.Context, reviewerID, applicatio
 	var application struct {
 		UserID string `db:"user_id"`
 		Status string `db:"status"`
+		Role   string `db:"role"`
 	}
-	if err = tx.GetContext(ctx, &application, `SELECT user_id, status FROM verification_applications WHERE id = ? FOR UPDATE`, applicationID); err != nil {
+	if err = tx.GetContext(ctx, &application, `SELECT v.user_id, v.status, u.role FROM verification_applications v JOIN users u ON u.id = v.user_id WHERE v.id = ? FOR UPDATE`, applicationID); err != nil {
 		_ = tx.Rollback()
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
@@ -323,6 +346,16 @@ func (s *Service) ReviewVerification(ctx context.Context, reviewerID, applicatio
 		return err
 	}
 	accountStatus := decisionAccountStatus(decision, completion)
+	if familyRole(application.Role) {
+		// Parents and students have no separate profile-completion step.
+		if decision == "approved" {
+			accountStatus = "active"
+		}
+		if err = s.applyFamilyDecision(ctx, tx, reviewerID, application.Role, userID, decision); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
 	var rejectionReason, correctionRequest any
 	switch decision {
 	case "rejected":
@@ -403,7 +436,20 @@ func (s *Service) ListVerifications(ctx context.Context, status, role string) ([
 		query += ` WHERE ` + strings.Join(conditions, " AND ")
 	}
 	query += ` ORDER BY v.submitted_at ASC`
-	return rows, s.db.SelectContext(ctx, &rows, query, args...)
+	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		if !familyRole(rows[i].Role) {
+			continue
+		}
+		family, err := s.familyContext(ctx, rows[i].Role, rows[i].UserID)
+		if err != nil {
+			return nil, err
+		}
+		rows[i].Family = family
+	}
+	return rows, nil
 }
 
 func (s *Service) RecordInterviewOutcome(ctx context.Context, reviewerID, interviewID, status, notes string) error {

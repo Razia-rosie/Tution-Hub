@@ -34,13 +34,11 @@ var (
 var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("timing-equaliser-not-a-password"), bcrypt.DefaultCost)
 
 // InitialAccountStatus returns the status a newly registered account starts in.
-// Only tutors and coaching centres go through manual verification; students and
-// parents are usable immediately.
+// Every public role goes through manual verification: tutors and coaching
+// centres before they can work, parents before their child may sign up, and
+// students (who need a parent's approved invitation) before full access.
 func InitialAccountStatus(role string) string {
-	if role == "tutor" || role == "coaching" {
-		return "pending"
-	}
-	return "active"
+	return "pending"
 }
 
 type User struct {
@@ -158,6 +156,13 @@ func (s *Service) Register(ctx context.Context, name, email, password, role stri
 	}
 	user := User{ID: uuid.NewString(), Name: strings.TrimSpace(name), Email: email, Phone: phone, PasswordHash: string(passwordHash), Role: role}
 	user.AccountStatus = InitialAccountStatus(role)
+	if role == "student" {
+		if err := s.registerInvitedStudent(ctx, user); err != nil {
+			return User{}, Tokens{}, err
+		}
+		tokens, err := s.issueTokens(ctx, user, "")
+		return user, tokens, err
+	}
 	_, err = s.db.ExecContext(ctx, `INSERT INTO users (id, name, email, phone, password_hash, role, account_status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		user.ID, user.Name, user.Email, user.Phone, user.PasswordHash, user.Role, user.AccountStatus)
 	if err != nil {

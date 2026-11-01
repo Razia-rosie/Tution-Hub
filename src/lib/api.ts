@@ -181,8 +181,8 @@ async function authenticatedRequest<T>(path: string, init: RequestInit = {}): Pr
 // covers the review step. Before anything is submitted, report not_started.
 export function effectiveStatus(dashboard: WorkflowDashboard): string {
   const account = dashboard.account.status
-  // Only tutors and coaching centres are verified; other roles are usable unless suspended.
-  if (dashboard.account.role !== 'tutor' && dashboard.account.role !== 'coaching') return account === 'suspended' ? 'suspended' : 'active'
+  // Every public role is verified by hand. Parents and students who joined
+  // before family verification are already active and stay so.
   if (!dashboard.verification) return account === 'active' || account === 'suspended' ? account : 'not_started'
   if (account === 'pending') return dashboard.verification.status
   return account
@@ -240,6 +240,78 @@ export type AdminApplication = {
   submission_count: number
   document_count: number
   interviews: Array<{ id: string; mode: string; scheduled_at: string; location_or_link?: string | null; status: string; notes?: string | null }>
+  /** Parent applications carry their child invitations; student applications the inviting parent. */
+  family?: { invitations?: StudentInvitation[]; parent?: ParentLink | null }
+}
+
+/** A parent's request for a student account for their child. `expired` is computed by the server. */
+export type StudentInvitation = {
+  id: string
+  parent_id: string
+  child_email: string
+  child_name?: string | null
+  relationship: string
+  status: 'pending_approval' | 'approved' | 'expired' | 'rejected' | 'registered' | 'cancelled'
+  rejection_reason?: string | null
+  reviewed_at?: string | null
+  expires_at?: string | null
+  registered_at?: string | null
+  created_at: string
+  student_id?: string | null
+  student_name?: string | null
+  student_account_status?: string | null
+  student_verification_id?: string | null
+  student_verification_status?: string | null
+  student_rejection_reason?: string | null
+  student_correction_request?: string | null
+  student_submitted_at?: string | null
+  link_status?: string | null
+}
+
+export type AdminStudentInvitation = StudentInvitation & {
+  parent_name: string
+  parent_email: string
+  parent_account_status: string
+  parent_verification_id?: string | null
+  parent_verification_status?: string | null
+}
+
+export type ParentLink = {
+  invitation_id: string
+  invited_email: string
+  relationship: string
+  parent_id: string
+  parent_name: string
+  parent_email?: string
+  parent_account_status: string
+  parent_verification_status?: string | null
+  link_status?: string | null
+  registered_at?: string | null
+}
+
+export function getFamily() {
+  return authenticatedRequest<{ invitations?: StudentInvitation[]; parent?: ParentLink | null }>('/api/v1/workflow/family')
+}
+
+export function createStudentInvitation(input: { child_email: string; child_name?: string; relationship: string }) {
+  return authenticatedRequest<{ invitation: StudentInvitation }>('/api/v1/workflow/family/invitations', { method: 'POST', body: JSON.stringify(input) })
+}
+
+export function cancelStudentInvitation(id: string) {
+  return authenticatedRequest<void>(`/api/v1/workflow/family/invitations/${id}/cancel`, { method: 'POST' })
+}
+
+/** Whether an email may be used to register a student. The email is sent in the body, not the URL. */
+export function checkStudentInvitation(email: string) {
+  return request<{ allowed: boolean; code?: string; message?: string }>('/api/v1/auth/student-invitation/check', { method: 'POST', body: JSON.stringify({ email }) })
+}
+
+export function getAdminStudentInvitations(status = '') {
+  return authenticatedRequest<{ invitations: AdminStudentInvitation[] }>(`/api/v1/workflow/admin/student-invitations${status ? `?status=${encodeURIComponent(status)}` : ''}`)
+}
+
+export function reviewStudentInvitation(id: string, decision: 'approved' | 'rejected', reason: string) {
+  return authenticatedRequest<void>(`/api/v1/workflow/admin/student-invitations/${id}/decision`, { method: 'POST', body: JSON.stringify({ decision, reason }) })
 }
 
 export function getAdminApplications(filters: { status?: string; role?: string } = {}) {

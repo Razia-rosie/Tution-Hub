@@ -25,7 +25,7 @@ const initial = (): State => ({
   role: 'tutor',
   signedIn: hasSession(),
   user: null,
-  verification: { tutor: 'not_started', student: 'verified', parent: 'verified', coaching: 'not_started', admin: 'verified' },
+  verification: { tutor: 'not_started', student: 'not_started', parent: 'not_started', coaching: 'not_started', admin: 'verified' },
   toasts: [],
 })
 

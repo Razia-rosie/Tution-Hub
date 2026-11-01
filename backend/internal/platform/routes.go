@@ -46,7 +46,7 @@ func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, s *Service) {
 	})
 	pub.GET("/users/:id/photo", func(c *gin.Context) { s.Photo(c, uid(c), role(c)) })
 
-	a := r.Group("", auth.RequireAuth(authService))
+	a := r.Group("", auth.RequireAuth(authService), familyAccessGate)
 
 	a.POST("/profile/photo", s.SetPhoto)
 	a.GET("/users/:id/awards", func(c *gin.Context) {

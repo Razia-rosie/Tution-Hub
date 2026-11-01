@@ -94,8 +94,14 @@ func TestValidateImageRejectsDecompressionBomb(t *testing.T) {
 }
 
 func TestDocumentRequirements(t *testing.T) {
-	if !verifiableRole("tutor") || !verifiableRole("coaching") || verifiableRole("student") || verifiableRole("parent") || verifiableRole("admin") {
-		t.Fatal("only tutors and coaching centres are verified")
+	if !verifiableRole("tutor") || !verifiableRole("coaching") || !verifiableRole("student") || !verifiableRole("parent") || verifiableRole("admin") {
+		t.Fatal("every public role is verified; administrators are not")
+	}
+	if got := missingRequired("parent", map[string]bool{"parent_nid": true}); len(got) != 1 || got[0] != "Your child's birth certificate" {
+		t.Fatalf("a parent needs their NID and the child's birth certificate, got %v", got)
+	}
+	if allowedDocumentType("student", "parent_nid") || !allowedDocumentType("student", "birth_certificate") || allowedDocumentType("parent", "birth_certificate") {
+		t.Fatal("family document types must be role specific")
 	}
 	if !allowedDocumentType("coaching", "trade_license") || allowedDocumentType("tutor", "trade_license") || allowedDocumentType("tutor", "../etc") {
 		t.Fatal("document types must be role specific")
