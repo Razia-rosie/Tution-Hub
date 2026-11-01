@@ -30,6 +30,7 @@ Start with the [project README](../README.md). Live site: https://tuitionhub-ome
 | [DEPLOYMENT.md](DEPLOYMENT.md) | The live Vercel + TiDB deployment, free limits, setup, verification, troubleshooting |
 | [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | Not implemented, technical debt, untested areas |
 | [CHANGELOG.md](CHANGELOG.md) | History of changes |
+| [RELEASE_NOTES.md](RELEASE_NOTES.md) | Prepared v1.0.0 release notes (not yet tagged) |
 
 ## Other
 
