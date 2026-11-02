@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Role } from './nav'
-import { clearTokens, getCurrentUser, hasSession, saveTokens, type ApiUser } from './api'
+import { ACCOUNT_SWITCHED, bindSessionUser, clearTokens, getCurrentUser, hasSession, saveTokens, type ApiUser } from './api'
 
 // Client state is limited to the session, the sign-up draft, the verification
 // banner and toasts. Everything else lives in the backend and is fetched per screen.
@@ -57,7 +57,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!restoring) return
     getCurrentUser()
-      .then(({ user }) => setS((p) => ({ ...p, user, role: user.role, signedIn: true })))
+      .then(({ user }) => {
+        bindSessionUser(user.id)
+        let switched: string | null = null
+        try { switched = sessionStorage.getItem(ACCOUNT_SWITCHED); sessionStorage.removeItem(ACCOUNT_SWITCHED) } catch { /* private mode */ }
+        setS((p) => ({ ...p, user, role: user.role, signedIn: true, toasts: switched ? [...p.toasts, { id: tid++, tone: 'info', text: `This browser is now signed in as ${switched}, because another tab signed in to that account. To use two accounts at once, use a private window or another browser profile.` }] : p.toasts }))
+      })
       // An expired or revoked session is already cleared by the API client's
       // refresh step; a network failure keeps the tokens for the next load.
       .catch(() => setS((p) => ({ ...p, user: null, signedIn: false })))
@@ -82,7 +87,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       saveTokens({ access_token: accessToken })
       setS((p) => ({ ...p, signedIn: true }))
     },
-    setAuthenticatedUser: (user) => setS((p) => ({ ...p, user, role: user.role, signedIn: true })),
+    setAuthenticatedUser: (user) => {
+      bindSessionUser(user.id)
+      setS((p) => ({ ...p, user, role: user.role, signedIn: true }))
+    },
     signOut: () => {
       clearTokens()
       setS((p) => ({ ...p, user: null, signedIn: false }))

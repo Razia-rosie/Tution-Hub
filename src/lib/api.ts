@@ -28,6 +28,11 @@ const LEGACY_ACCESS = 'tuitionhub.access_token'
 const LEGACY_REFRESH = 'tuitionhub.refresh_token'
 const COOKIE_MODE = { 'X-Session-Mode': 'cookie' }
 let accessToken: string | null = null
+// The account this tab shows. The refresh cookie is shared by every tab, so a
+// refresh can return a different account when another tab signed in since.
+let sessionUserId: string | null = null
+/** Set when another tab's sign-in replaced this tab's account; read once after the reload. */
+export const ACCOUNT_SWITCHED = 'tuitionhub.account_switched'
 
 const storage = {
   get: (k: string) => { try { return localStorage.getItem(k) } catch { return null } },
@@ -84,8 +89,14 @@ export function saveTokens(tokens: Pick<Tokens, 'access_token'>) {
   storage.del(LEGACY_REFRESH)
 }
 
+/** Records which account this tab shows, so a refresh for another account is not used silently. */
+export function bindSessionUser(id: string | null) {
+  sessionUserId = id
+}
+
 export function clearTokens() {
   accessToken = null
+  sessionUserId = null
   storage.del(SESSION_FLAG)
   storage.del(LEGACY_ACCESS)
   storage.del(LEGACY_REFRESH)
@@ -110,7 +121,16 @@ function refreshSession(): Promise<boolean> {
     // A legacy token from the old scheme is sent once in the body; the response sets the cookie.
     const legacy = storage.get(LEGACY_REFRESH)
     try {
-      const { tokens } = await request<AuthResponse>('/api/v1/auth/refresh', { method: 'POST', headers: COOKIE_MODE, body: JSON.stringify(legacy ? { refresh_token: legacy } : {}) })
+      const { user, tokens } = await request<AuthResponse>('/api/v1/auth/refresh', { method: 'POST', headers: COOKIE_MODE, body: JSON.stringify(legacy ? { refresh_token: legacy } : {}) })
+      if (sessionUserId && user.id !== sessionUserId) {
+        // Another tab signed in as someone else. Never act as that account while
+        // this tab still shows the previous one: reload so it shows who is signed in.
+        try { sessionStorage.setItem(ACCOUNT_SWITCHED, user.name) } catch { /* private mode */ }
+        accessToken = null
+        sessionUserId = null
+        window.location.reload()
+        return false
+      }
       saveTokens(tokens)
       return true
     } catch {

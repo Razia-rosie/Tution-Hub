@@ -8,6 +8,7 @@
 | API end to end | `tests/platform-e2e.mjs` | All five role journeys over HTTP: discovery, links, posts, applications, chat, messaging, demo class, agreement, classroom, payments, reviews, coaching, support, admin platform, enforced settings |
 | API end to end | `tests/family-e2e.mjs` | Parent and student verification: parent NID and child birth certificate, child email, admin permission, invitation-only student sign-up with the child's own password, separate student review, rejections and resubmissions, duplicate and unauthorized emails, document access, unauthorized admin actions |
 | Browser end to end | `tests/family-browser.mjs` | The same family workflow through the UI: parent, admin and child in three browsers |
+| Browser end to end | `tests/session-tabs-browser.mjs` | Two accounts in two tabs of one browser: a tab never acts as another tab's account after its token expires (needs a test API with `ACCESS_TOKEN_TTL=5s`) |
 | Browser end to end | `tests/browser-e2e.mjs` | Verification UI, admin review, suspension, notifications, session storage, every screen of every role at 375/768/1280 px (crashes, horizontal overflow, console errors) |
 | Browser end to end | `tests/journeys-browser.mjs` | Cross-role journeys driven through the UI, from linking a child to grading homework and coaching fees |
 | Demo-account checks | `tests/demo-accounts.mjs` | The eight seeded demo accounts: sign-in, sessions, permissions, connected records, reversible create/update/delete ([DEMO_ACCOUNTS.md](DEMO_ACCOUNTS.md)) |
