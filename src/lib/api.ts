@@ -190,6 +190,27 @@ export type WorkflowDashboard = {
   requirements?: DocumentRequirement[] | null
   verification?: { id: string; user_id: string; status: string; submitted_at?: string | null; reviewed_at?: string | null; rejection_reason?: string | null; correction_request?: string | null } | null
   profile?: WorkflowProfile | null
+  /** The applicant's current (not cancelled) interview, if one is scheduled or completed. */
+  interview?: ApplicantInterview | null
+}
+
+export type ApplicantInterview = {
+  id: string
+  mode: 'online' | 'in_person'
+  scheduled_at: string
+  location_or_link?: string | null
+  instructions?: string | null
+  status: 'scheduled' | 'completed'
+  confirmed_at?: string | null
+  updated_at?: string | null
+  conversation_id?: string | null
+  latest_admin_message?: string | null
+  latest_admin_message_at?: string | null
+}
+
+/** The applicant confirms they can attend their scheduled interview; repeating it changes nothing. */
+export function confirmInterview() {
+  return authenticatedRequest<{ confirmed: boolean; already_confirmed: boolean }>('/api/v1/workflow/interview/confirm', { method: 'POST' })
 }
 
 async function authenticatedRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -260,7 +281,7 @@ export type AdminApplication = {
   profile: Record<string, unknown>
   submission_count: number
   document_count: number
-  interviews: Array<{ id: string; mode: string; scheduled_at: string; location_or_link?: string | null; status: string; notes?: string | null }>
+  interviews: Array<{ id: string; mode: string; scheduled_at: string; location_or_link?: string | null; status: string; notes?: string | null; instructions?: string | null; confirmed_at?: string | null; updated_at?: string | null; conversation_id?: string | null }>
   /** Parent applications carry their child invitations; student applications the inviting parent. */
   family?: { invitations?: StudentInvitation[]; parent?: ParentLink | null }
 }
@@ -348,8 +369,13 @@ export function reviewAdminApplication(applicationId: string, decision: 'approve
   return authenticatedRequest<void>(`/api/v1/workflow/admin/verifications/${applicationId}/decision`, { method: 'POST', body: JSON.stringify({ decision, reason }) })
 }
 
-export function scheduleAdminInterview(applicationId: string, input: { mode: 'online' | 'in_person'; scheduled_at: string; location_or_link?: string }) {
+export function scheduleAdminInterview(applicationId: string, input: { mode: 'online' | 'in_person'; scheduled_at: string; location_or_link?: string; instructions?: string }) {
   return authenticatedRequest<void>(`/api/v1/workflow/admin/verifications/${applicationId}/interviews`, { method: 'POST', body: JSON.stringify(input) })
+}
+
+/** Moves a scheduled interview (same record); the applicant must confirm the new time again. */
+export function rescheduleAdminInterview(applicationId: string, interviewId: string, input: { mode: 'online' | 'in_person'; scheduled_at: string; location_or_link?: string; instructions?: string }) {
+  return authenticatedRequest<void>(`/api/v1/workflow/admin/verifications/${applicationId}/interviews/${interviewId}`, { method: 'PUT', body: JSON.stringify(input) })
 }
 
 export function recordAdminInterviewOutcome(applicationId: string, interviewId: string, status: 'completed' | 'cancelled', notes: string) {

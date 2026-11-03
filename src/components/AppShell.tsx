@@ -31,7 +31,7 @@ export default function AppShell() {
   }, [userRole])
   const [unread, setUnread] = useState(0)
   useEffect(() => {
-    if (!userRole || userRole === 'admin') return
+    if (!userRole) return
     const refresh = () => getNotifications().then((r) => setUnread((r.notifications ?? []).filter((n) => !n.read_at).length)).catch(() => {})
     void refresh()
     window.addEventListener('notifications:changed', refresh)
@@ -77,7 +77,7 @@ export default function AppShell() {
         <header className="sticky top-0 z-30 flex flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-2.5 md:px-8">
           <Link to="/" className="font-heading font-bold text-navy-900 md:hidden">TuitionHub</Link>
           <div className="ml-auto flex items-center gap-2">
-            {role !== 'admin' && <span className="relative"><IconButton label={unread ? `Notifications, ${unread} unread` : 'Notifications'} onClick={() => nav(`/app/${role}/notifications`)}><Bell size={20} /></IconButton>{unread > 0 && <span aria-hidden className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-danger-600 px-1 text-center text-[10px] font-bold leading-4 text-white">{unread > 9 ? '9+' : unread}</span>}</span>}
+            <span className="relative"><IconButton label={unread ? `Notifications, ${unread} unread` : 'Notifications'} onClick={() => nav(`/app/${role}/notifications`)}><Bell size={20} /></IconButton>{unread > 0 && <span aria-hidden className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-danger-600 px-1 text-center text-[10px] font-bold leading-4 text-white">{unread > 9 ? '9+' : unread}</span>}</span>
             <Avatar name={s.user.name} size={32} />
           </div>
         </header>

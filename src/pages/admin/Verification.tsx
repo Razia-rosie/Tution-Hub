@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { X } from 'lucide-react'
 import { Button, Card, Chip, Field, Input, Select, StatusChip, Textarea } from '../../components/ui'
 import { childStage, reviewStage } from '../../components/FamilyVerification'
-import { fetchPrivateDocument, getAdminApplications, getAdminDocuments, getApplicationHistory, recordAdminInterviewOutcome, reviewAdminApplication, reviewStudentInvitation, scheduleAdminInterview, type AdminApplication, type AuditEntry, type StudentInvitation } from '../../lib/api'
+import { interviewStage } from '../../components/InterviewCard'
+import { fetchPrivateDocument, getAdminApplications, getAdminDocuments, getApplicationHistory, recordAdminInterviewOutcome, rescheduleAdminInterview, reviewAdminApplication, reviewStudentInvitation, scheduleAdminInterview, type AdminApplication, type AuditEntry, type StudentInvitation } from '../../lib/api'
 
 const STATUS_FILTERS = [
   { value: '', label: 'All submitted' },
@@ -43,6 +45,10 @@ export default function Verification({ fixedRole, title = 'Verification review' 
   const [scheduledAt, setScheduledAt] = useState('')
   const [location, setLocation] = useState('')
   const [outcomeNotes, setOutcomeNotes] = useState('')
+  const [instructions, setInstructions] = useState('')
+  const [moving, setMoving] = useState<string | null>(null)
+  const [move, setMove] = useState({ mode: 'online' as 'online' | 'in_person', at: '', location: '', instructions: '' })
+  const nav = useNavigate()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -90,6 +96,9 @@ export default function Verification({ fixedRole, title = 'Verification review' 
   }
 
   const reasonRequired = decision !== 'approved'
+  // The final approval comes after the interview; the server refuses it while one is still scheduled.
+  const openInterview = selected?.interviews?.find((i) => i.status === 'scheduled')
+  const toLocalInput = (iso: string) => { const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }
   return (
     <div className="space-y-6">
       <div><p className="text-sm text-gray-600">Administrator</p><h1 className="text-3xl">{title}</h1><p className="mt-1 text-sm text-gray-600">Review submitted pictures and details by hand. Approval, rejection and correction requests are manual decisions.</p></div>
@@ -151,16 +160,42 @@ export default function Verification({ fixedRole, title = 'Verification review' 
                   <Field label="Decision">{(id) => <Select id={id} value={decision} onChange={(e) => setDecision(e.target.value as typeof decision)} options={DECISIONS} />}</Field>
                   <Field label="Reason shown to the applicant" hint={reasonRequired ? 'Required, at least 10 characters' : 'Optional'}>{(id) => <Textarea id={id} value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
                 </div>
-                <Button className="mt-3" variant={decision === 'rejected' ? 'destructive' : 'primary'} loading={busy} disabled={reasonRequired && reason.trim().length < 10} onClick={() => void act(() => reviewAdminApplication(selected.id, decision, reason), 'Decision saved.').then((ok) => { if (ok) setReason('') })}>{DECISIONS.find((d) => d.value === decision)?.label}</Button>
+                {decision === 'approved' && openInterview && <p className="mt-3 text-sm text-warning-600">An interview is still scheduled. Mark it completed (or cancel it) before the final approval.</p>}
+                <Button className="mt-3" variant={decision === 'rejected' ? 'destructive' : 'primary'} loading={busy} disabled={(reasonRequired && reason.trim().length < 10) || (decision === 'approved' && !!openInterview)} onClick={() => void act(() => reviewAdminApplication(selected.id, decision, reason), 'Decision saved.').then((ok) => { if (ok) setReason('') })}>{DECISIONS.find((d) => d.value === decision)?.label}</Button>
               </section>
             ) : <p className="mt-6 border-t border-gray-100 pt-5 text-sm text-gray-600">{selected.status === 'resubmission_required' ? 'Corrections were requested. The application returns to the Pending queue when the applicant resubmits.' : `This application has been decided (${label(selected.status).label}). The decision is final.`}</p>}
 
-            {!fixedRole && <section className="mt-6 border-t border-gray-100 pt-5">
+            <section className="mt-6 border-t border-gray-100 pt-5">
               <h3 className="font-semibold">Interview (optional)</h3>
-              {reviewable && <><div className="mt-3 grid gap-3 sm:grid-cols-2"><Field label="Mode">{(id) => <Select id={id} value={mode} onChange={(e) => setMode(e.target.value as typeof mode)} options={['online', 'in_person'].map(label)} />}</Field><Field label="Date and time">{(id) => <Input id={id} type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />}</Field><Field label="Location or meeting link">{(id) => <Input id={id} value={location} onChange={(e) => setLocation(e.target.value)} />}</Field></div><Button className="mt-3" variant="secondary" loading={busy} disabled={!scheduledAt} onClick={() => void act(() => scheduleAdminInterview(selected.id, { mode, scheduled_at: new Date(scheduledAt).toISOString(), location_or_link: location }), 'Interview scheduled.').then((ok) => { if (ok) { setScheduledAt(''); setLocation('') } })}>Schedule interview</Button></>}
+              {reviewable && !openInterview && <><div className="mt-3 grid gap-3 sm:grid-cols-2"><Field label="Mode">{(id) => <Select id={id} value={mode} onChange={(e) => setMode(e.target.value as typeof mode)} options={['online', 'in_person'].map(label)} />}</Field><Field label="Date and time">{(id) => <Input id={id} type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />}</Field><Field label="Location or meeting link">{(id) => <Input id={id} value={location} onChange={(e) => setLocation(e.target.value)} />}</Field><Field label="Instructions for the applicant" hint="Optional; shown in their interview details and message">{(id) => <Textarea id={id} value={instructions} onChange={(e) => setInstructions(e.target.value)} maxLength={2000} />}</Field></div><Button className="mt-3" variant="secondary" loading={busy} disabled={!scheduledAt} onClick={() => void act(() => scheduleAdminInterview(selected.id, { mode, scheduled_at: new Date(scheduledAt).toISOString(), location_or_link: location, instructions }), 'Interview scheduled. The applicant was notified and messaged.').then((ok) => { if (ok) { setScheduledAt(''); setLocation(''); setInstructions('') } })}>Schedule interview</Button></>}
               {!selected.interviews?.length && <p className="mt-2 text-sm text-gray-600">No interviews.</p>}
-              {selected.interviews?.map((interview) => <div key={interview.id} className="mt-4 rounded-input border border-gray-200 p-3 text-sm"><p className="font-semibold">{label(interview.mode).label} · {when(interview.scheduled_at)} · {interview.status}</p>{interview.location_or_link && <p className="mt-1 break-all text-gray-600">{interview.location_or_link}</p>}{interview.status === 'scheduled' && <><Textarea className="mt-3" value={outcomeNotes} onChange={(e) => setOutcomeNotes(e.target.value)} placeholder="Outcome notes" aria-label="Interview outcome notes" /><div className="mt-2 flex gap-2"><Button size="sm" onClick={() => void act(() => recordAdminInterviewOutcome(selected.id, interview.id, 'completed', outcomeNotes), 'Interview marked completed.')}>Record completed</Button><Button size="sm" variant="secondary" onClick={() => void act(() => recordAdminInterviewOutcome(selected.id, interview.id, 'cancelled', outcomeNotes), 'Interview cancelled.')}>Cancel interview</Button></div></>}</div>)}
-            </section>}
+              {selected.interviews?.map((interview) => {
+                const scheduled = interview.status === 'scheduled'
+                const stage = interview.status === 'cancelled' ? { label: 'Cancelled', tone: 'gray' as const } : interviewStage({ status: interview.status as 'scheduled' | 'completed', confirmed_at: interview.confirmed_at })
+                return (
+                  <div key={interview.id} className="mt-4 rounded-input border border-gray-200 p-3 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">{label(interview.mode).label} · {when(interview.scheduled_at)}</p><Chip tone={stage.tone}>{stage.label === 'Scheduled, please confirm' ? 'Waiting for applicant confirmation' : stage.label}</Chip></div>
+                    {interview.location_or_link && <p className="mt-1 break-all text-gray-600">{interview.location_or_link}</p>}
+                    {interview.instructions && <p className="mt-1 whitespace-pre-wrap text-gray-600">Instructions: {interview.instructions}</p>}
+                    {interview.confirmed_at && <p className="mt-1 text-teal-700">Applicant confirmed {when(interview.confirmed_at)}</p>}
+                    {interview.updated_at && <p className="mt-1 text-xs text-gray-600">Rescheduled {when(interview.updated_at)}</p>}
+                    {interview.conversation_id && <Button size="sm" variant="tertiary" className="mt-2" onClick={() => nav(`/app/admin/messages/${interview.conversation_id}`)}>Open conversation with the applicant</Button>}
+                    {scheduled && moving === interview.id && (
+                      <div className="mt-3 rounded-input bg-gray-50 p-3">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Field label="New mode">{(id) => <Select id={id} value={move.mode} onChange={(e) => setMove({ ...move, mode: e.target.value as 'online' | 'in_person' })} options={['online', 'in_person'].map(label)} />}</Field>
+                          <Field label="New date and time">{(id) => <Input id={id} type="datetime-local" value={move.at} onChange={(e) => setMove({ ...move, at: e.target.value })} />}</Field>
+                          <Field label="New location or meeting link">{(id) => <Input id={id} value={move.location} onChange={(e) => setMove({ ...move, location: e.target.value })} />}</Field>
+                          <Field label="New instructions">{(id) => <Textarea id={id} value={move.instructions} onChange={(e) => setMove({ ...move, instructions: e.target.value })} maxLength={2000} />}</Field>
+                        </div>
+                        <div className="mt-2 flex gap-2"><Button size="sm" loading={busy} disabled={!move.at} onClick={() => void act(() => rescheduleAdminInterview(selected.id, interview.id, { mode: move.mode, scheduled_at: new Date(move.at).toISOString(), location_or_link: move.location, instructions: move.instructions }), 'Interview rescheduled. The applicant was notified and must confirm again.').then((ok) => { if (ok) setMoving(null) })}>Save new schedule</Button><Button size="sm" variant="tertiary" onClick={() => setMoving(null)}>Keep current schedule</Button></div>
+                      </div>
+                    )}
+                    {scheduled && <><Textarea className="mt-3" value={outcomeNotes} onChange={(e) => setOutcomeNotes(e.target.value)} placeholder="Outcome notes" aria-label="Interview outcome notes" /><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" onClick={() => { if (window.confirm('Mark this interview as completed? This does not approve the application.')) void act(() => recordAdminInterviewOutcome(selected.id, interview.id, 'completed', outcomeNotes), 'Interview marked completed. Make the final decision above.') }}>Mark interview completed</Button>{moving !== interview.id && <Button size="sm" variant="secondary" onClick={() => { setMoving(interview.id); setMove({ mode: interview.mode as 'online' | 'in_person', at: toLocalInput(interview.scheduled_at), location: interview.location_or_link ?? '', instructions: interview.instructions ?? '' }) }}>Reschedule</Button>}<Button size="sm" variant="secondary" onClick={() => void act(() => recordAdminInterviewOutcome(selected.id, interview.id, 'cancelled', outcomeNotes), 'Interview cancelled.')}>Cancel interview</Button></div></>}
+                  </div>
+                )
+              })}
+            </section>
 
             <section className="mt-6 border-t border-gray-100 pt-5">
               <h3 className="font-semibold">History</h3>

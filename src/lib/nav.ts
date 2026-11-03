@@ -51,7 +51,7 @@ export const NAV: Record<Role, NavItem[]> = {
   ],
   admin: [
     n('overview', 'Overview', LayoutDashboard, true), n('users', 'Users', Users, true), n('tutors', 'Tutors', User), n('students', 'Students', GraduationCap),
-    n('parents', 'Parents', Baby), n('coaching', 'Coaching', Building2), n('verification', 'Verification', ShieldCheck, true), n('family', 'Parent & Student Verification', UserCheck),
+    n('parents', 'Parents', Baby), n('coaching', 'Coaching', Building2), n('verification', 'Verification', ShieldCheck, true), n('family', 'Parent & Student Verification', UserCheck), n('messages', 'Messages', MessageSquare), n('notifications', 'Notifications', Bell),
     n('tuition-posts', 'Tuition Posts', FileText), n('matches', 'Matches', GitCompare), n('reports', 'Reports', Flag),
     n('complaints', 'Complaints', AlertTriangle), n('reviews', 'Reviews', Star), n('awards', 'Awards', Award), n('payments', 'Payments', Wallet),
     n('safety', 'Safety', ShieldAlert), n('analytics', 'Analytics', LineChart), n('appeals', 'Appeals', Gavel), n('settings', 'Settings', Settings),

@@ -128,7 +128,11 @@ func (s *Service) GetDashboard(ctx context.Context, userID string) (map[string]a
 	}
 	var verification Verification
 	err = s.db.GetContext(ctx, &verification, `SELECT id, user_id, status, submitted_at, reviewed_at, rejection_reason, correction_request FROM verification_applications WHERE user_id = ?`, userID)
-	result := map[string]any{"account": account, "verification": nil, "profile": profile, "documents": []Document{}, "requirements": RequirementsFor(account.Role)}
+	interview, interviewErr := s.CurrentInterview(ctx, userID)
+	if interviewErr != nil {
+		return nil, interviewErr
+	}
+	result := map[string]any{"account": account, "verification": nil, "profile": profile, "documents": []Document{}, "requirements": RequirementsFor(account.Role), "interview": interview}
 	if errors.Is(err, sql.ErrNoRows) {
 		return result, nil
 	}
@@ -340,6 +344,18 @@ func (s *Service) ReviewVerification(ctx context.Context, reviewerID, applicatio
 		return ErrConflict
 	}
 	userID := application.UserID
+	if decision == "approved" {
+		// The final approval comes after the interview: a still-scheduled one must be completed or cancelled first.
+		var open int
+		if err = tx.GetContext(ctx, &open, `SELECT COUNT(*) FROM interviews WHERE application_id = ? AND status = 'scheduled'`, applicationID); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if open > 0 {
+			_ = tx.Rollback()
+			return ErrInterviewPending
+		}
+	}
 	var completion uint8
 	if err = tx.GetContext(ctx, &completion, `SELECT COALESCE((SELECT completion_percent FROM role_profiles WHERE user_id = ?), 0)`, userID); err != nil {
 		_ = tx.Rollback()
@@ -424,7 +440,7 @@ func nullIfEmpty(value string) any {
 
 func (s *Service) ListVerifications(ctx context.Context, status, role string) ([]AdminApplication, error) {
 	var rows []AdminApplication
-	query := `SELECT v.id, v.user_id, v.status, v.submitted_at, v.reviewed_at, v.rejection_reason, v.correction_request, u.name, u.email, u.role, u.account_status, COALESCE(p.profile, JSON_OBJECT()) AS profile, COALESCE(i.interviews, JSON_ARRAY()) AS interviews, (SELECT COUNT(*) FROM audit_logs a WHERE a.subject_user_id = v.user_id AND a.action IN ('verification_submitted', 'verification_resubmitted')) AS submission_count, (SELECT COUNT(*) FROM verification_documents d WHERE d.application_id = v.id) AS document_count FROM verification_applications v JOIN users u ON u.id = v.user_id LEFT JOIN (SELECT user_id, JSON_OBJECT('display_name', display_name, 'institution', institution, 'education', education, 'subjects', subjects, 'classes', classes, 'areas', areas, 'completion_percent', completion_percent) AS profile FROM role_profiles) p ON p.user_id = u.id LEFT JOIN (SELECT application_id, JSON_ARRAYAGG(JSON_OBJECT('id', id, 'mode', mode, 'scheduled_at', DATE_FORMAT(scheduled_at, '%Y-%m-%dT%H:%i:%sZ'), 'location_or_link', location_or_link, 'status', status, 'notes', notes)) AS interviews FROM interviews GROUP BY application_id) i ON i.application_id = v.id`
+	query := `SELECT v.id, v.user_id, v.status, v.submitted_at, v.reviewed_at, v.rejection_reason, v.correction_request, u.name, u.email, u.role, u.account_status, COALESCE(p.profile, JSON_OBJECT()) AS profile, COALESCE(i.interviews, JSON_ARRAY()) AS interviews, (SELECT COUNT(*) FROM audit_logs a WHERE a.subject_user_id = v.user_id AND a.action IN ('verification_submitted', 'verification_resubmitted')) AS submission_count, (SELECT COUNT(*) FROM verification_documents d WHERE d.application_id = v.id) AS document_count FROM verification_applications v JOIN users u ON u.id = v.user_id LEFT JOIN (SELECT user_id, JSON_OBJECT('display_name', display_name, 'institution', institution, 'education', education, 'subjects', subjects, 'classes', classes, 'areas', areas, 'completion_percent', completion_percent) AS profile FROM role_profiles) p ON p.user_id = u.id LEFT JOIN (SELECT i.application_id, JSON_ARRAYAGG(JSON_OBJECT('id', i.id, 'mode', i.mode, 'scheduled_at', DATE_FORMAT(i.scheduled_at, '%Y-%m-%dT%H:%i:%sZ'), 'location_or_link', i.location_or_link, 'status', i.status, 'notes', i.notes, 'instructions', i.instructions, 'confirmed_at', DATE_FORMAT(i.confirmed_at, '%Y-%m-%dT%H:%i:%sZ'), 'updated_at', DATE_FORMAT(i.updated_at, '%Y-%m-%dT%H:%i:%sZ'), 'conversation_id', ` + adminConversation + `)) AS interviews FROM interviews i JOIN verification_applications a ON a.id = i.application_id GROUP BY i.application_id) i ON i.application_id = v.id`
 	args := []any{}
 	conditions := []string{}
 	if status != "" {
@@ -496,6 +512,10 @@ func (s *Service) RecordInterviewOutcome(ctx context.Context, reviewerID, interv
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `INSERT INTO audit_logs (id, actor_id, subject_user_id, action, metadata) VALUES (?, ?, ?, ?, JSON_OBJECT('interview_id', ?, 'notes', ?))`, uuid.NewString(), reviewerID, userID, "interview_"+status, interviewID, notes)
 	}
+	if err == nil && status == "completed" {
+		date, _ := meetingWhen(scheduledAt)
+		err = deliverMeeting(ctx, tx, reviewerID, userID, "interview_completed", "Interview completed", "Your verification interview on "+date+" is marked as completed. The administrator's final decision will follow.", interviewCompletedMessage(scheduledAt))
+	}
 	if err == nil && status == "cancelled" {
 		// The applicant's notification and meeting message must not keep showing a cancelled interview as on.
 		date, clock := meetingWhen(scheduledAt)
@@ -528,7 +548,7 @@ func (s *Service) DocumentContent(ctx context.Context, key string) ([]byte, erro
 	return s.files.Get(ctx, key)
 }
 
-func (s *Service) CreateInterview(ctx context.Context, reviewerID, applicationID, mode, scheduledAt, location string) error {
+func (s *Service) CreateInterview(ctx context.Context, reviewerID, applicationID, mode, scheduledAt, location, instructions string) error {
 	if mode != "online" && mode != "in_person" {
 		return ErrInvalidState
 	}
@@ -551,15 +571,25 @@ func (s *Service) CreateInterview(ctx context.Context, reviewerID, applicationID
 		_ = tx.Rollback()
 		return ErrConflict
 	}
+	// One interview at a time: a scheduled one is rescheduled, not duplicated.
+	var open int
+	if err = tx.GetContext(ctx, &open, `SELECT COUNT(*) FROM interviews WHERE application_id = ? AND status = 'scheduled'`, applicationID); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if open > 0 {
+		_ = tx.Rollback()
+		return ErrInterviewPending
+	}
 	userID := application.UserID
-	_, err = tx.ExecContext(ctx, `INSERT INTO interviews (id, application_id, scheduled_by, mode, scheduled_at, location_or_link) VALUES (?, ?, ?, ?, ?, ?)`, uuid.NewString(), applicationID, reviewerID, mode, scheduledAt, nullIfEmpty(location))
+	_, err = tx.ExecContext(ctx, `INSERT INTO interviews (id, application_id, scheduled_by, mode, scheduled_at, location_or_link, instructions) VALUES (?, ?, ?, ?, ?, ?, ?)`, uuid.NewString(), applicationID, reviewerID, mode, scheduledAt, nullIfEmpty(location), nullIfEmpty(instructions))
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `UPDATE users SET account_status = 'interview_scheduled' WHERE id = ?`, userID)
 	}
 	if err == nil {
 		var at time.Time
 		if at, err = time.Parse("2006-01-02 15:04:05.000000", scheduledAt); err == nil {
-			err = deliverMeeting(ctx, tx, reviewerID, userID, "interview_scheduled", "Interview scheduled", interviewScheduledNotification(mode, at), interviewScheduledMessage(mode, location, at))
+			err = deliverMeeting(ctx, tx, reviewerID, userID, "interview_scheduled", "Interview scheduled", interviewScheduledNotification(mode, at), interviewScheduledMessage(mode, location, instructions, at))
 		}
 	}
 	if err == nil {

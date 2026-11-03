@@ -43,6 +43,7 @@ A new local Docker volume applies `001`–`005` automatically on first start; ap
 | `003_platform.sql` | marketplace, messaging, tuition agreements, classrooms, coaching, reviews, payments, support, settings; extra profile and listing columns; indexes |
 | `004_session_ids.sql` | `refresh_tokens.session_id`, so logout, password reset and suspension end a session's access tokens immediately |
 | `005_stored_files.sql` | `stored_files` (uploaded file contents when `FILE_STORAGE=database`) |
+| `007_interview_confirmation.sql` | `interviews.instructions`, `confirmed_at` (applicant confirmed attendance; cleared on reschedule), `updated_at` |
 | `006_family_verification.sql` | `student_invitations` (a parent's request for a child's student account, admin permission, expiry, the student it created) |
 
 Rules:
