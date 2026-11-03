@@ -280,7 +280,22 @@ async function tuitionJourney() {
   eng = await refresh()
   if (eng.status === 'trial_requested') { expect(await act(t.token, { action: 'accept_trial' }), [200], 'accept trial'); note(`${t.email} accepted the demo class`); eng = await refresh() }
   if (!eng.tutor_confirmed_at && !eng.client_confirmed_at && eng.status !== 'active') { expect(await act(t.token, { action: 'propose', days: 'Sun, Tue, Thu', time_slot: '6:30-7:30 PM', mode: 'offline', monthly_fee: 8000, start_date: future(4).slice(0, 10), location_note: 'Uttara Sector 7' }), [200], 'propose'); note(`${t.email} proposed tuition terms`); eng = await refresh() }
-  if (eng.status !== 'active') { expect(await act(p.token, { action: 'confirm' }), [200], 'confirm'); note(`${p.email} confirmed the tuition; classroom created`); eng = await refresh() }
+  // Both sides agree to continue; agreement alone does not start the tuition.
+  if (eng.status === 'proposed' && !eng.client_confirmed_at) { expect(await act(p.token, { action: 'confirm' }), [200], 'agree'); note(`${p.email} agreed to continue; the tuition waits for its classroom`); eng = await refresh() }
+  // The tutor creates the tuition's classroom, which invites the guardian and the student.
+  if (eng.status === 'agreed' && !eng.classroom_id) { expect(await act(t.token, { action: 'create_classroom' }), [200], 'create classroom'); note(`${t.email} created the classroom and invited ${p.email} and ${s.email}`); eng = await refresh() }
+  // The tuition starts once every invitation is accepted.
+  if (eng.status === 'agreed') {
+    for (const r of eng.classroom_requests ?? []) {
+      if (r.status === 'accepted') continue
+      const who = r.user_id === p.id ? p : r.user_id === s.id ? s : null
+      if (!who) fatal(`unexpected classroom invitation for ${r.name}`)
+      expect(await act(who.token, { action: 'accept_classroom' }), [200], 'accept classroom')
+      note(`${who.email} accepted the classroom invitation`)
+    }
+    eng = await refresh()
+  }
+  if (eng.status !== 'active' || !eng.classroom_id) fatal(`the demo tuition did not start (status ${eng.status})`)
   const room = eng.classroom_id
 
   // Classroom: notes, assignments, a graded submission, schedule, attendance, diary.

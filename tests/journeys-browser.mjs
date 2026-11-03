@@ -149,12 +149,23 @@ async function main() {
     await click(T, 'Propose terms')
     await waitText(T, 'Monthly fee')
     await fill(T, 'Days', 'Sun, Tue, Thu'); await fill(T, 'Time', '6:30-7:30 PM')
-    await fill(T, 'Monthly fee', '7000'); await fill(T, 'Start date', localDateTime(5).slice(0, 10))
+    await fill(T, 'Monthly fee', '7000'); await fill(T, 'Start date', localDateTime(0).slice(0, 10))
     await click(T, 'Propose', { exact: true })
     check('tutor: terms proposed', await waitText(T, 'Waiting for the other side'))
     await go(P, '/app/parent/tuitions')
-    await click(P, 'Confirm terms')
-    check('parent: tuition active with contact shared', await waitText(P, 'Active') && await waitText(P, tutor.email))
+    await click(P, 'Agree to continue')
+    check('parent: both agreed, tuition not started yet', await waitText(P, 'Agreed · waiting for the classroom'))
+    await go(T, '/app/tutor/my-students')
+    await click(T, 'Create classroom')
+    check('tutor: classroom created, invitations pending', await waitText(T, '2 classroom invitations pending'))
+    await go(P, '/app/parent/tuitions')
+    await click(P, 'Accept classroom invitation')
+    check('parent: joined, waiting for the student', await waitText(P, '1 classroom invitation pending'))
+    await go(S, '/app/student/my-tuition')
+    await click(S, 'Accept classroom invitation')
+    check('student: joined, tuition started', await waitText(S, 'Active (started)'))
+    await go(P, '/app/parent/tuitions')
+    check('parent: tuition active with contact shared', await waitText(P, 'Active (started)') && await waitText(P, tutor.email))
 
     // ---- Tutor runs the classroom ----
     await go(T, '/app/tutor/schedule')
@@ -218,8 +229,8 @@ async function main() {
     // ---- Payments ----
     await go(T, '/app/tutor/payments')
     await click(T, 'Open ledger')
-    await click(T, 'Record due')
-    check('tutor: month recorded due', await waitText(T, 'Month recorded as due'))
+    await click(T, 'Mark month completed')
+    check('tutor: month marked completed', await waitText(T, 'Month marked completed'))
 
     // ---- Coaching centre ----
     const C = await login(browser, coaching, 'coaching')

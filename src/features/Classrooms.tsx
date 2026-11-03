@@ -59,6 +59,7 @@ function Classroom({ id, initial, onBack }: { id: string; initial: ClassroomTab;
       <Loaded load={load}>{(c) => (
         <>
           <PageTitle title={c.name} sub={`${c.owner_role === 'coaching' ? 'Centre' : 'Tutor'}: ${c.owner_name} · ${c.members.length} student${c.members.length === 1 ? '' : 's'}${c.access === 'viewer' ? ' · view only' : ''}`} />
+          {c.join_requests && c.join_requests.length > 0 && <Card><p className="text-sm font-semibold">Classroom invitations</p><ul className="mt-1 flex flex-wrap gap-2 text-sm">{c.join_requests.map((r) => <li key={r.id} className="flex items-center gap-1">{r.name} ({r.participant === 'guardian' ? 'guardian' : 'student'}): <Chip tone={r.status === 'accepted' ? 'green' : r.status === 'rejected' ? 'red' : 'amber'}>{r.status === 'accepted' ? 'Accepted' : r.status === 'rejected' ? 'Declined' : 'Pending'}</Chip></li>)}</ul></Card>}
           <Tabs tabs={TABS} value={tab} onChange={(t) => setTab(t as ClassroomTab)} />
           <div className="mt-4">
             {tab === 'Schedule' && <ScheduleTab c={c} reload={load.reload} />}

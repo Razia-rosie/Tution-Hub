@@ -96,6 +96,10 @@ export function MyApplications() {
   )
 }
 
+// The Area dropdown keeps its fixed list; this option reveals a text input for any other area.
+const OTHER_AREA = '__other__'
+const areaOptions = [...opts(AREAS, 'Choose'), { value: OTHER_AREA, label: 'Other / Enter manually' }]
+
 const emptyPost: PostInput = { subject: '', class_name: '', medium: '', area: '', mode: 'offline', days: '', time_slot: '', budget: null, requirements: '', student_id: '' }
 
 /** Parent / student: create and manage tuition posts, review applicants. */
@@ -104,19 +108,19 @@ export function MyPosts({ role }: { role: 'parent' | 'student' }) {
   const nav = useNavigate()
   const load = useLoad(() => platform.myPosts(), [])
   const links = useLoad(() => (role === 'parent' ? platform.links() : Promise.resolve({ links: [] })), [role])
-  const [editing, setEditing] = useState<{ id?: string; form: PostInput } | null>(null)
+  const [editing, setEditing] = useState<{ id?: string; form: PostInput; customArea?: boolean } | null>(null)
   const [viewing, setViewing] = useState<Post | null>(null)
   const { busy, run } = useAction(toast)
   const children = links.data?.links.filter((l) => l.status === 'approved' && l.student_id) ?? []
   const set = (k: keyof PostInput, v: string | number | null) => setEditing((e) => (e ? { ...e, form: { ...e.form, [k]: v } } : e))
   const save = () => editing && run(async () => {
-    const body = { ...editing.form, budget: editing.form.budget ? Number(editing.form.budget) : null, student_id: editing.form.student_id || undefined }
+    const body = { ...editing.form, area: editing.form.area.trim(), budget: editing.form.budget ? Number(editing.form.budget) : null, student_id: editing.form.student_id || undefined }
     if (editing.id) await platform.updatePost(editing.id, body)
     else await platform.createPost(body)
     setEditing(null)
     await load.reload()
   }, editing.id ? 'Post updated.' : 'Tuition post published.')
-  const valid = editing && editing.form.subject && editing.form.class_name && editing.form.area
+  const valid = editing && editing.form.subject && editing.form.class_name && editing.form.area.trim()
   return (
     <div className="space-y-4">
       <PageTitle title="My tuition posts" sub="Describe what you need; verified tutors apply and you choose." actions={<Button icon={<Plus size={16} />} onClick={() => setEditing({ form: { ...emptyPost } })}>New post</Button>} />
@@ -124,7 +128,7 @@ export function MyPosts({ role }: { role: 'parent' | 'student' }) {
         {(d) => <div className="space-y-3">{d.posts.map((p) => (
           <PostCard key={p.id} p={p} actions={<>
             <Button size="sm" onClick={() => setViewing(p)}>Applicants ({p.applicants})</Button>
-            {(p.status === 'open' || p.status === 'paused') && <Button size="sm" variant="secondary" onClick={() => setEditing({ id: p.id, form: { subject: p.subject, class_name: p.class_name, medium: p.medium ?? '', area: p.area, mode: p.mode, days: p.days ?? '', time_slot: p.time_slot ?? '', budget: p.budget ?? null, requirements: p.requirements ?? '' } })}>Edit</Button>}
+            {(p.status === 'open' || p.status === 'paused') && <Button size="sm" variant="secondary" onClick={() => setEditing({ id: p.id, customArea: !AREAS.includes(p.area), form: { subject: p.subject, class_name: p.class_name, medium: p.medium ?? '', area: p.area, mode: p.mode, days: p.days ?? '', time_slot: p.time_slot ?? '', budget: p.budget ?? null, requirements: p.requirements ?? '' } })}>Edit</Button>}
             {p.status === 'open' && <Button size="sm" variant="secondary" loading={busy} onClick={() => void run(async () => { await platform.setPostStatus(p.id, 'paused'); await load.reload() }, 'Post paused.')}>Pause</Button>}
             {p.status === 'paused' && <Button size="sm" variant="secondary" loading={busy} onClick={() => void run(async () => { await platform.setPostStatus(p.id, 'open'); await load.reload() }, 'Post reopened.')}>Reopen</Button>}
             {p.status !== 'closed' && <Button size="sm" variant="destructive" loading={busy} onClick={() => { if (window.confirm('Close this post? It cannot be reopened.')) void run(async () => { await platform.setPostStatus(p.id, 'closed'); await load.reload() }, 'Post closed.') }}>Close</Button>}
@@ -136,7 +140,8 @@ export function MyPosts({ role }: { role: 'parent' | 'student' }) {
           <Field label="Subject">{(id) => <Select id={id} value={editing.form.subject} onChange={(e) => set('subject', e.target.value)} options={opts(SUBJECTS, 'Choose')} />}</Field>
           <Field label="Class">{(id) => <Select id={id} value={editing.form.class_name} onChange={(e) => set('class_name', e.target.value)} options={opts(CLASSES, 'Choose')} />}</Field>
           <Field label="Medium">{(id) => <Select id={id} value={editing.form.medium ?? ''} onChange={(e) => set('medium', e.target.value)} options={opts(MEDIUMS, 'Any')} />}</Field>
-          <Field label="Area">{(id) => <Select id={id} value={editing.form.area} onChange={(e) => set('area', e.target.value)} options={opts(AREAS, 'Choose')} />}</Field>
+          <Field label="Area">{(id) => <Select id={id} value={editing.customArea ? OTHER_AREA : editing.form.area} onChange={(e) => { const v = e.target.value; setEditing((x) => (x ? { ...x, customArea: v === OTHER_AREA, form: { ...x.form, area: v === OTHER_AREA ? '' : v } } : x)) }} options={areaOptions} />}</Field>
+          {editing.customArea && <Field label="Enter your area" error={editing.form.area.trim() ? undefined : 'Enter the area, for example Savar or Narayanganj.'}>{(id) => <Input id={id} value={editing.form.area} maxLength={120} aria-invalid={!editing.form.area.trim()} onChange={(e) => set('area', e.target.value)} placeholder="Area name" />}</Field>}
           <Field label="Mode">{(id) => <Select id={id} value={editing.form.mode} onChange={(e) => set('mode', e.target.value)} options={opts(['offline', 'online', 'both'])} />}</Field>
           <Field label="Days">{(id) => <Input id={id} value={editing.form.days ?? ''} onChange={(e) => set('days', e.target.value)} placeholder="Sun, Tue, Thu" />}</Field>
           <Field label="Time">{(id) => <Input id={id} value={editing.form.time_slot ?? ''} onChange={(e) => set('time_slot', e.target.value)} placeholder="6:30–7:30 PM" />}</Field>

@@ -202,8 +202,14 @@ async function main() {
   let list = await GET('/api/v1/engagements', parent.token)
   check('tuition: contact hidden before confirmation', list.data.engagements.find((e) => e.id === eng)?.contact === undefined)
   res = await act(parent.token, { action: 'confirm' })
-  check('tuition: guardian confirms -> active with classroom', res.status === 200 && res.data.status === 'active' && res.data.classroom_id)
+  check('tuition: guardian confirms -> both agreed, not started', res.status === 200 && res.data.status === 'agreed')
+  // The tutor creates the classroom; the tuition starts once guardian and student accept.
+  res = await act(tutor.token, { action: 'create_classroom' })
+  check('tuition: tutor creates the classroom', res.status === 200 && res.data.classroom_id)
   const room = res.data.classroom_id
+  check('tuition: guardian accepts the classroom invitation', (await act(parent.token, { action: 'accept_classroom' })).status === 200)
+  res = await act(student.token, { action: 'accept_classroom' })
+  check('tuition: student accepts -> active', res.status === 200 && res.data.status === 'active')
   list = await GET('/api/v1/engagements', parent.token)
   check('tuition: contact shared once active', list.data.engagements.find((e) => e.id === eng)?.contact?.email === tutor.email)
   check('tuition: post marked filled', (await GET('/api/v1/tuition-posts/mine', parent.token)).data.posts.find((p) => p.id === postId)?.status === 'filled')

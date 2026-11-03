@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -407,6 +408,8 @@ type Engagement struct {
 	CancelReason    *string    `db:"cancel_reason" json:"cancel_reason"`
 	ClassroomID     *string    `db:"classroom_id" json:"classroom_id"`
 	CreatedAt       time.Time  `db:"created_at" json:"created_at"`
+	// Invitations to the tuition's classroom; the tuition starts when all are accepted.
+	ClassroomRequests []JoinRequest `db:"-" json:"classroom_requests"`
 	// Contact details of the other side, shared only once the tuition is active.
 	Contact *struct {
 		Email string  `json:"email"`
@@ -432,11 +435,15 @@ func clientOf(e Engagement) string {
 
 func (s *Service) Engagements(ctx context.Context, userID string) ([]Engagement, error) {
 	out := []Engagement{}
-	if err := s.db.SelectContext(ctx, &out, engagementSelect+` WHERE e.tutor_id = ? OR e.guardian_id = ? OR e.student_id = ? ORDER BY e.updated_at DESC`, userID, userID, userID); err != nil {
+	err := s.db.SelectContext(ctx, &out, engagementSelect+` WHERE e.tutor_id = ? OR e.guardian_id = ? OR e.student_id = ? ORDER BY e.updated_at DESC`, userID, userID, userID)
+	if err != nil {
 		return nil, err
 	}
 	for i := range out {
 		s.attachContact(ctx, userID, &out[i])
+		if out[i].ClassroomRequests, err = s.joinRequests(ctx, out[i].ID); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }
@@ -536,7 +543,7 @@ func (s *Service) CreateEngagement(ctx context.Context, clientID, clientRole str
 }
 
 type engagementAction struct {
-	Action       string   `json:"action" validate:"required,oneof=accept_trial decline_trial propose confirm cancel complete"`
+	Action       string   `json:"action" validate:"required,oneof=accept_trial decline_trial propose confirm create_classroom accept_classroom decline_classroom cancel complete"`
 	Reason       string   `json:"reason" validate:"max=255"`
 	Days         string   `json:"days" validate:"max=80"`
 	TimeSlot     string   `json:"time_slot" validate:"max=60"`
@@ -551,7 +558,9 @@ type engagementAction struct {
 //	trial_requested --tutor accept_trial--> trial_scheduled
 //	trial_requested --tutor decline_trial--> trial_declined
 //	trial_scheduled|proposed --either propose(terms)--> proposed (only the proposer is confirmed)
-//	proposed --other side confirm--> active (creates the classroom)
+//	proposed --other side confirm--> agreed (both agreed to continue; not started yet)
+//	agreed --tutor create_classroom--> classroom with join requests for guardian and student
+//	agreed --invited participants accept_classroom (all of them)--> active (started)
 //	active --either complete--> completed;  any open state --either cancel--> cancelled
 func (s *Service) ActOnEngagement(ctx context.Context, actorID, id string, in engagementAction) (map[string]any, error) {
 	e, err := s.engagement(ctx, actorID, id)
@@ -560,6 +569,13 @@ func (s *Service) ActOnEngagement(ctx context.Context, actorID, id string, in en
 	}
 	isTutor := actorID == e.TutorID
 	isClient := actorID == clientOf(e)
+	// Invited participants (the guardian and the student) answer their own classroom invitation.
+	if in.Action == "accept_classroom" || in.Action == "decline_classroom" {
+		if isTutor {
+			return nil, forbidden("the tutor does not join their own classroom")
+		}
+		return s.respondClassroom(ctx, e, actorID, in.Action == "accept_classroom")
+	}
 	if !isTutor && !isClient {
 		return nil, forbidden("only the tutor and the guardian can change this tuition")
 	}
@@ -608,6 +624,16 @@ func (s *Service) ActOnEngagement(ctx context.Context, actorID, id string, in en
 			return nil, conflict("you already confirmed; waiting for the other side")
 		}
 		return s.activate(ctx, e, isTutor, name, other)
+	case "create_classroom":
+		if !isTutor {
+			return nil, forbidden("only the tutor creates the classroom")
+		}
+		out, err := s.createTuitionClassroom(ctx, e, name)
+		if err != nil {
+			return nil, err
+		}
+		s.audit(ctx, actorID, other, "engagement_create_classroom", map[string]any{"engagement_id": id, "classroom_id": out["classroom_id"]})
+		return out, nil
 	case "cancel":
 		if e.Status == "completed" || e.Status == "cancelled" {
 			return nil, conflict("this tuition is already " + e.Status)
@@ -633,8 +659,9 @@ func (s *Service) ActOnEngagement(ctx context.Context, actorID, id string, in en
 	return map[string]any{"ok": true}, nil
 }
 
-// activate records one side's confirmation; when both sides have confirmed the
-// tuition becomes active and its classroom is created with the student in it.
+// activate records one side's agreement to continue. When both sides have
+// agreed the tuition becomes 'agreed': it starts only once the tutor has created
+// its classroom and the invited guardian and student have accepted.
 func (s *Service) activate(ctx context.Context, e Engagement, isTutor bool, name, other string) (map[string]any, error) {
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -654,37 +681,21 @@ func (s *Service) activate(ctx context.Context, e Engagement, isTutor bool, name
 	}
 	out := map[string]any{"status": "proposed"}
 	if both {
-		if _, err = tx.ExecContext(ctx, `UPDATE engagements SET status = 'active' WHERE id = ?`, e.ID); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE engagements SET status = 'agreed' WHERE id = ? AND status = 'proposed'`, e.ID); err != nil {
 			return nil, err
 		}
-		classroom := newID()
-		roomName := e.Subject + " · " + e.ClassName
-		if e.StudentName != nil {
-			roomName += " · " + *e.StudentName
-		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO classrooms (id, owner_id, engagement_id, name, subject) VALUES (?, ?, ?, ?, ?)`, classroom, e.TutorID, e.ID, roomName, e.Subject); err != nil {
-			return nil, err
-		}
-		if e.StudentID != nil {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO classroom_members (classroom_id, student_id) VALUES (?, ?)`, classroom, *e.StudentID); err != nil {
-				return nil, err
-			}
-		}
-		if e.ListingID != nil {
-			_, _ = tx.ExecContext(ctx, `UPDATE tuition_listings SET status = 'filled' WHERE id = ? AND status IN ('open', 'paused')`, *e.ListingID)
-		}
-		out = map[string]any{"status": "active", "classroom_id": classroom}
+		out = map[string]any{"status": "agreed"}
 	}
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
 	if both {
-		s.notify(ctx, other, "tuition_active", "Tuition confirmed", "The "+e.Subject+" tuition is confirmed and its classroom is ready. Contact details are now shared.")
-		if e.StudentID != nil && *e.StudentID != other {
-			s.notify(ctx, *e.StudentID, "tuition_active", "New classroom", "Your "+e.Subject+" classroom with "+e.TutorName+" is ready.")
+		body := "You both agreed to continue the " + e.Subject + " tuition (" + tuitionRef(e.ID) + "). Next, the tutor creates its classroom; the tuition starts once the invitations are accepted."
+		for _, id := range uniqueIDs(e.TutorID, clientOf(e)) {
+			s.notify(ctx, id, "tuition_agreed", "Both sides agreed", body)
 		}
 	} else {
-		s.notify(ctx, other, "tuition_confirmed_one_side", "Waiting for your confirmation", name+" confirmed the "+e.Subject+" tuition terms.")
+		s.notify(ctx, other, "tuition_confirmed_one_side", "Waiting for your confirmation", name+" agreed to continue the "+e.Subject+" tuition on the proposed terms.")
 	}
 	return out, nil
 }
@@ -692,13 +703,22 @@ func (s *Service) activate(ctx context.Context, e Engagement, isTutor bool, name
 // ---------- payments (tracking only; no money moves through TuitionHub) ----------
 
 type Payment struct {
-	ID          string     `db:"id" json:"id"`
-	Month       string     `db:"month" json:"month"`
-	Amount      float64    `db:"amount" json:"amount"`
-	Status      string     `db:"status" json:"status"`
-	Note        *string    `db:"note" json:"note"`
-	MarkedAt    *time.Time `db:"marked_at" json:"marked_at"`
-	ConfirmedAt *time.Time `db:"confirmed_at" json:"confirmed_at"`
+	ID             string     `db:"id" json:"id"`
+	Month          string     `db:"month" json:"month"`
+	Amount         float64    `db:"amount" json:"amount"`
+	Status         string     `db:"status" json:"status"`
+	Note           *string    `db:"note" json:"note"`
+	MarkedAt       *time.Time `db:"marked_at" json:"marked_at"`
+	ConfirmedAt    *time.Time `db:"confirmed_at" json:"confirmed_at"`
+	CompletedAt    *time.Time `db:"completed_at" json:"completed_at"`
+	ReminderSentAt *time.Time `db:"reminder_sent_at" json:"reminder_sent_at"`
+	AmountPaid     *float64   `db:"amount_paid" json:"amount_paid"`
+	PayMethod      *string    `db:"pay_method" json:"pay_method"`
+	PayReference   *string    `db:"pay_reference" json:"pay_reference"`
+	// Derived for display: in_progress | month_completed, and
+	// payment_due | payment_submitted | confirmed_paid | disputed.
+	CompletionStatus string `db:"-" json:"completion_status"`
+	PaymentStatus    string `db:"-" json:"payment_status"`
 }
 
 func (s *Service) Payments(ctx context.Context, userID, engagementID string) ([]Payment, error) {
@@ -706,13 +726,31 @@ func (s *Service) Payments(ctx context.Context, userID, engagementID string) ([]
 		return nil, err
 	}
 	out := []Payment{}
-	err := s.db.SelectContext(ctx, &out, `SELECT id, month, amount, status, note, marked_at, confirmed_at FROM payment_records WHERE engagement_id = ? ORDER BY month DESC`, engagementID)
+	err := s.db.SelectContext(ctx, &out, `SELECT id, month, amount, status, note, marked_at, confirmed_at, completed_at, reminder_sent_at, amount_paid, pay_method, pay_reference FROM payment_records WHERE engagement_id = ? ORDER BY month DESC`, engagementID)
+	for i := range out {
+		out[i].CompletionStatus = "in_progress"
+		if out[i].CompletedAt != nil {
+			out[i].CompletionStatus = "month_completed"
+		}
+		out[i].PaymentStatus = map[string]string{"due": "payment_due", "marked_paid": "payment_submitted", "confirmed": "confirmed_paid", "disputed": "disputed"}[out[i].Status]
+	}
 	return out, err
 }
 
-// PaymentAction: the tutor records a month as due; the guardian marks it paid;
-// the tutor confirms receipt; either side may dispute with a note.
-func (s *Service) PaymentAction(ctx context.Context, userID, engagementID, action, month, note string) error {
+type paymentInput struct {
+	Action     string   `json:"action" validate:"required,oneof=due complete_month mark_paid confirm dispute"`
+	Month      string   `json:"month" validate:"required"`
+	Note       string   `json:"note" validate:"max=255"`
+	AmountPaid *float64 `json:"amount_paid" validate:"omitempty,gt=0,lte=1000000"`
+	Method     string   `json:"method" validate:"max=60"`
+	Reference  string   `json:"reference" validate:"max=120"`
+}
+
+// PaymentAction: the tutor marks a month completed (or, as before, records it
+// due); the payer (the guardian, or the student when no guardian is involved)
+// submits a payment confirmation; the tutor confirms receipt or disputes it.
+// Only the tutor's confirmation marks a month paid.
+func (s *Service) PaymentAction(ctx context.Context, userID, engagementID string, in paymentInput) error {
 	e, err := s.engagement(ctx, userID, engagementID)
 	if err != nil {
 		return err
@@ -721,8 +759,10 @@ func (s *Service) PaymentAction(ctx context.Context, userID, engagementID, actio
 		return conflict("payments are tracked for active tuitions only")
 	}
 	isTutor := userID == e.TutorID
-	if len(month) != 7 || month[4] != '-' {
-		return badRequest("month must be YYYY-MM")
+	isPayer := userID == clientOf(e)
+	month, note := in.Month, in.Note
+	if _, err := parseMonth(month); err != nil {
+		return err
 	}
 	exec := func(q string, args ...any) (int64, error) {
 		r, err := s.db.ExecContext(ctx, q, args...)
@@ -731,9 +771,13 @@ func (s *Service) PaymentAction(ctx context.Context, userID, engagementID, actio
 		}
 		return r.RowsAffected()
 	}
+	ref, label := tuitionRef(e.ID), monthLabel(month)
 	var n int64
+	var after func()
 	switch {
-	case action == "due" && isTutor:
+	case in.Action == "complete_month" && isTutor:
+		return s.completeMonth(ctx, e, month)
+	case in.Action == "due" && isTutor:
 		if e.MonthlyFee == nil {
 			return badRequest("set a monthly fee first")
 		}
@@ -741,30 +785,74 @@ func (s *Service) PaymentAction(ctx context.Context, userID, engagementID, actio
 		if n == 0 && err == nil {
 			return conflict("that month is already recorded")
 		}
-		s.notify(ctx, clientOf(e), "payment_due", "Tuition fee due", "The "+month+" fee for "+e.Subject+" is due.")
-	case action == "mark_paid" && !isTutor:
-		n, err = exec(`UPDATE payment_records SET status = 'marked_paid', marked_at = UTC_TIMESTAMP(6), note = ? WHERE engagement_id = ? AND month = ? AND status IN ('due', 'disputed')`, nullable(note), engagementID, month)
-		s.notify(ctx, e.TutorID, "payment_marked", "Fee marked as paid", "The guardian marked "+month+" as paid. Please confirm receipt.")
-	case action == "confirm" && isTutor:
+		after = func() {
+			s.notify(ctx, clientOf(e), "payment_due", "Tuition fee due", "The "+month+" fee for "+e.Subject+" is due.")
+		}
+	case in.Action == "mark_paid" && isPayer:
+		var completed bool
+		err = s.db.GetContext(ctx, &completed, `SELECT completed_at IS NOT NULL FROM payment_records WHERE engagement_id = ? AND month = ?`, engagementID, month)
+		if errors.Is(err, sql.ErrNoRows) {
+			return conflict("that month has no payment record yet")
+		} else if err != nil {
+			return err
+		}
+		method, reference := strings.TrimSpace(in.Method), strings.TrimSpace(in.Reference)
+		// Months tracked through completion need the details of the payment.
+		if completed && (in.AmountPaid == nil || (method == "" && reference == "")) {
+			return badRequest("enter the amount paid and the payment method or reference")
+		}
+		n, err = exec(`UPDATE payment_records SET status = 'marked_paid', marked_at = UTC_TIMESTAMP(6), note = ?, amount_paid = ?, pay_method = ?, pay_reference = ? WHERE engagement_id = ? AND month = ? AND status IN ('due', 'disputed')`,
+			nullable(note), in.AmountPaid, nullable(method), nullable(reference), engagementID, month)
+		after = func() {
+			parts := []string{}
+			if in.AmountPaid != nil {
+				parts = append(parts, takaText(*in.AmountPaid))
+			}
+			if method != "" {
+				parts = append(parts, "via "+method)
+			}
+			if reference != "" {
+				parts = append(parts, "ref "+reference)
+			}
+			detail := ""
+			if len(parts) > 0 {
+				detail = " (" + strings.Join(parts, ", ") + ")"
+			}
+			s.notify(ctx, e.TutorID, "payment_marked", "Payment submitted", s.userName(ctx, userID)+" submitted a payment confirmation for "+label+detail+" · "+e.Subject+" ("+ref+"). Please confirm receipt or dispute it.")
+		}
+	case in.Action == "confirm" && isTutor:
 		n, err = exec(`UPDATE payment_records SET status = 'confirmed', confirmed_at = UTC_TIMESTAMP(6) WHERE engagement_id = ? AND month = ? AND status = 'marked_paid'`, engagementID, month)
-	case action == "dispute":
+		after = func() {
+			s.notify(ctx, clientOf(e), "payment_confirmed", "Payment confirmed", e.TutorName+" confirmed receiving the "+label+" payment for "+e.Subject+" ("+ref+").")
+		}
+	case in.Action == "dispute" && (isTutor || isPayer):
 		if len(strings.TrimSpace(note)) < 5 {
 			return badRequest("please explain the dispute")
 		}
 		n, err = exec(`UPDATE payment_records SET status = 'disputed', note = ? WHERE engagement_id = ? AND month = ? AND status IN ('marked_paid', 'due')`, note, engagementID, month)
-		other := e.TutorID
-		if isTutor {
-			other = clientOf(e)
+		after = func() {
+			if isTutor {
+				// The tutor's dispute goes into the tuition's chat so both sides can discuss it.
+				if _, err := s.deliverInConversation(ctx, e, e.TutorID, clientOf(e), "payment_disputed", "Payment disputed",
+					e.TutorName+" disputed the "+label+" payment for "+e.Subject+" ("+ref+"). Open the message to discuss it.",
+					"Payment disputed: "+label+" · "+e.Subject+" ("+ref+")\n"+strings.TrimSpace(note)); err != nil {
+					slog.Error("dispute message failed", "error", err)
+				}
+				return
+			}
+			s.notify(ctx, e.TutorID, "payment_disputed", "Payment disputed", month+": "+note)
 		}
-		s.notify(ctx, other, "payment_disputed", "Payment disputed", month+": "+note)
 	default:
 		return forbidden("you cannot do that with this payment")
 	}
 	if err != nil {
 		return err
 	}
-	if n == 0 && action != "due" {
+	if n == 0 {
 		return conflict("that payment is not in a state that allows this")
+	}
+	if after != nil {
+		after()
 	}
 	return nil
 }
