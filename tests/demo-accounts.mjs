@@ -74,6 +74,12 @@ async function apiChecks() {
   check('tutor1: has a pending chat request from parent2', JSON.stringify(incoming).includes(p2.id) && JSON.stringify(incoming).includes('pending'))
   const eng = (await GET('/api/v1/engagements', t1.token)).data.engagements.find((e) => e.student_id === s1.id)
   check('tutor1: active tuition with Rafi', eng?.status === 'active' && !!eng.classroom_id)
+  check('tutor1: both sides agreed before the tuition started', !!eng?.tutor_confirmed_at && !!eng.client_confirmed_at)
+  // Seeded with the classroom lifecycle, the guardian and the student each accepted their invitation.
+  // A tuition started before migration 008 has no invitations, and that is reported rather than failed.
+  const invites = eng?.classroom_requests ?? []
+  if (invites.length === 0) console.log('NOTE tutor1: this tuition started before classroom invitations existed (seeded before migration 008)')
+  else check('tutor1: guardian and student accepted the classroom invitations', invites.length === 2 && invites.every((r) => r.status === 'accepted') && invites.some((r) => r.user_id === p1.id) && invites.some((r) => r.user_id === s1.id), JSON.stringify(invites))
   const room = (await GET(`/api/v1/classrooms/${eng.classroom_id}`, t1.token)).data
   check('tutor1: classroom has notes, 2 assignments, 4 classes, diary', room.materials.length >= 1 && room.assignments.length === 2 && room.sessions.length === 4 && room.diary.length >= 1)
   const sessId = room.sessions[1].id

@@ -297,6 +297,9 @@ type listingInput struct {
 
 // CreateListing lets a parent (for a linked child) or a student post a tuition need.
 func (s *Service) CreateListing(ctx context.Context, ownerID, ownerRole string, in listingInput) (string, error) {
+	if strings.TrimSpace(in.Area) == "" {
+		return "", badRequest("enter the area")
+	}
 	if ownerRole == "parent" && in.StudentID != "" && !s.guardianOf(ctx, ownerID, in.StudentID) {
 		return "", forbidden("you can only post for a student linked to your account")
 	}
@@ -335,6 +338,9 @@ func (s *Service) UpdateListing(ctx context.Context, actorID, actorRole, id stri
 		}
 		_, err := s.db.ExecContext(ctx, `UPDATE tuition_listings SET status = ? WHERE id = ?`, status, id)
 		return err
+	}
+	if strings.TrimSpace(in.Area) == "" {
+		return badRequest("enter the area")
 	}
 	_, err := s.db.ExecContext(ctx, `UPDATE tuition_listings SET subject = ?, class_name = ?, medium = ?, area = ?, mode = ?, days = ?, time_slot = ?, budget = ?, requirements = ? WHERE id = ?`,
 		strings.TrimSpace(in.Subject), strings.TrimSpace(in.ClassName), nullable(in.Medium), strings.TrimSpace(in.Area), in.Mode, nullable(in.Days), nullable(in.TimeSlot), in.Budget, nullable(in.Requirements), id)

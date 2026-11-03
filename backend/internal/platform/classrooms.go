@@ -40,7 +40,15 @@ func (s *Service) classroomAccess(ctx context.Context, userID, userRole, classro
 	if n > 0 {
 		return memberAccess, nil
 	}
-	if err := s.db.GetContext(ctx, &n, `SELECT COUNT(*) FROM classroom_members m JOIN guardian_student_links l ON l.student_id = m.student_id AND l.status = 'approved' WHERE m.classroom_id = ? AND l.guardian_id = ?`, classroomID, userID); err != nil {
+	// A guardian invited to a tuition's classroom gets in only after accepting.
+	if err := s.db.GetContext(ctx, &n, `SELECT COUNT(*) FROM classroom_members m JOIN guardian_student_links l ON l.student_id = m.student_id AND l.status = 'approved' WHERE m.classroom_id = ? AND l.guardian_id = ?`+guardianNotPending, classroomID, userID); err != nil {
+		return noAccess, err
+	}
+	if n > 0 {
+		return viewerAccess, nil
+	}
+	if err := s.db.GetContext(ctx, &n, `SELECT COUNT(*) FROM classroom_join_requests j JOIN engagements e ON e.id = j.engagement_id
+		WHERE j.classroom_id = ? AND j.user_id = ? AND j.participant = 'guardian' AND j.status = 'accepted'`+acceptedGuardianOfChild, classroomID, userID); err != nil {
 		return noAccess, err
 	}
 	if n > 0 {
@@ -48,6 +56,14 @@ func (s *Service) classroomAccess(ctx context.Context, userID, userRole, classro
 	}
 	return noAccess, notFound("classroom not found")
 }
+
+// guardianNotPending excludes classrooms the guardian (l.guardian_id) was
+// invited to but has not accepted; such access goes through the invitation.
+const guardianNotPending = ` AND NOT EXISTS(SELECT 1 FROM classroom_join_requests j WHERE j.classroom_id = m.classroom_id AND j.user_id = l.guardian_id AND j.status <> 'accepted')`
+
+// acceptedGuardianOfChild keeps an accepted guardian invitation (j, e) valid
+// only while the guardian's link to the tuition's student is approved.
+const acceptedGuardianOfChild = ` AND (e.student_id IS NULL OR EXISTS(SELECT 1 FROM guardian_student_links gl WHERE gl.guardian_id = j.user_id AND gl.student_id = e.student_id AND gl.status = 'approved'))`
 
 func (s *Service) needAccess(ctx context.Context, c *gin.Context, classroomID string, min access) (access, error) {
 	a, err := s.classroomAccess(ctx, uid(c), role(c), classroomID)
@@ -93,7 +109,11 @@ func (s *Service) Classrooms(ctx context.Context, userID string) ([]ClassroomSum
 		WHERE c.owner_id = ? OR EXISTS(SELECT 1 FROM classroom_members m WHERE m.classroom_id = c.id AND m.student_id = ?)
 		UNION ALL `+classroomSummarySelect+`, st.name AS child_name FROM classrooms c JOIN users o ON o.id = c.owner_id
 		JOIN classroom_members m ON m.classroom_id = c.id JOIN guardian_student_links l ON l.student_id = m.student_id AND l.status = 'approved' AND l.guardian_id = ? JOIN users st ON st.id = m.student_id
-		ORDER BY archived, created_at DESC`, userID, userID, userID)
+		WHERE NOT EXISTS(SELECT 1 FROM classroom_join_requests j WHERE j.classroom_id = c.id AND j.user_id = l.guardian_id)
+		UNION ALL `+classroomSummarySelect+`, st.name AS child_name FROM classrooms c JOIN users o ON o.id = c.owner_id
+		JOIN classroom_join_requests j ON j.classroom_id = c.id AND j.user_id = ? AND j.participant = 'guardian' AND j.status = 'accepted' JOIN engagements e ON e.id = j.engagement_id LEFT JOIN users st ON st.id = e.student_id
+		WHERE 1 = 1`+acceptedGuardianOfChild+`
+		ORDER BY archived, created_at DESC`, userID, userID, userID, userID)
 	return out, err
 }
 
@@ -116,6 +136,8 @@ type ClassroomDetail struct {
 	Assignments []Assignment `db:"-" json:"assignments"`
 	Sessions    []Session    `db:"-" json:"sessions"`
 	Diary       []DiaryEntry `db:"-" json:"diary"`
+	// Invitations of a tuition classroom: who accepted and who is pending.
+	JoinRequests []JoinRequest `db:"-" json:"join_requests"`
 }
 
 type Material struct {
@@ -222,7 +244,10 @@ func (s *Service) ClassroomDetail(c *gin.Context, id string) (ClassroomDetail, e
 		}
 	}
 	d.Diary = []DiaryEntry{}
-	err = s.db.SelectContext(ctx, &d.Diary, `SELECT id, entry_date, topics, homework, note FROM diary_entries WHERE classroom_id = ? ORDER BY entry_date DESC LIMIT 100`, id)
+	if err = s.db.SelectContext(ctx, &d.Diary, `SELECT id, entry_date, topics, homework, note FROM diary_entries WHERE classroom_id = ? ORDER BY entry_date DESC LIMIT 100`, id); err != nil {
+		return d, err
+	}
+	d.JoinRequests, err = s.classroomJoinRequests(ctx, id)
 	return d, err
 }
 
@@ -254,7 +279,7 @@ func (s *Service) RemoveMember(ctx context.Context, classroomID, studentID strin
 // notifyMembers tells every student in the classroom, and their approved guardians.
 func (s *Service) notifyMembers(ctx context.Context, classroomID, kind, title, body string) {
 	var ids []string
-	_ = s.db.SelectContext(ctx, &ids, `SELECT student_id FROM classroom_members WHERE classroom_id = ? UNION SELECT l.guardian_id FROM classroom_members m JOIN guardian_student_links l ON l.student_id = m.student_id AND l.status = 'approved' WHERE m.classroom_id = ?`, classroomID, classroomID)
+	_ = s.db.SelectContext(ctx, &ids, `SELECT student_id FROM classroom_members WHERE classroom_id = ? UNION SELECT l.guardian_id FROM classroom_members m JOIN guardian_student_links l ON l.student_id = m.student_id AND l.status = 'approved' WHERE m.classroom_id = ?`+guardianNotPending, classroomID, classroomID)
 	for _, id := range ids {
 		s.notify(ctx, id, kind, title, body)
 	}

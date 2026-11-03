@@ -36,8 +36,15 @@ export type Engagement = {
   location_note?: string | null; monthly_fee?: number | null; start_date?: string | null; status: string; trial_at?: string | null; trial_note?: string | null
   tutor_confirmed_at?: string | null; client_confirmed_at?: string | null; cancel_reason?: string | null; classroom_id?: string | null; created_at: string
   contact?: { email: string; phone?: string | null }
+  classroom_requests?: JoinRequest[] | null
 }
-export type Payment = { id: string; month: string; amount: number; status: string; note?: string | null; marked_at?: string | null; confirmed_at?: string | null }
+export type JoinRequest = { id: string; user_id: string; name: string; participant: 'guardian' | 'student'; status: 'pending' | 'accepted' | 'rejected'; responded_at?: string | null }
+export type Payment = {
+  id: string; month: string; amount: number; status: string; note?: string | null; marked_at?: string | null; confirmed_at?: string | null
+  completed_at?: string | null; reminder_sent_at?: string | null; amount_paid?: number | null; pay_method?: string | null; pay_reference?: string | null
+  completion_status?: 'in_progress' | 'month_completed'; payment_status?: 'payment_due' | 'payment_submitted' | 'confirmed_paid' | 'disputed'
+}
+export type PaymentSubmission = { amount_paid?: number; method?: string; reference?: string }
 export type ClassroomSummary = {
   id: string; name: string; subject?: string | null; owner_id: string; owner_name: string; owner_role: string; engagement_id?: string | null; members: number
   open_assignments: number; next_session?: string | null; archived: boolean; created_at: string; child_name?: string | null
@@ -53,6 +60,7 @@ export type Diary = { id: string; entry_date: string; topics: string; homework?:
 export type ClassroomDetail = ClassroomSummary & {
   description?: string | null; access: 'owner' | 'member' | 'viewer'
   members: { id: string; name: string; class_name?: string | null }[]; materials: Material[]; assignments: Assignment[]; sessions: Session[]; diary: Diary[]
+  join_requests?: JoinRequest[] | null
 }
 export type Submission = { id: string; student_id: string; student_name: string; note?: string | null; file_name?: string | null; status: string; score?: number | null; feedback?: string | null; submitted_at: string; reviewed_at?: string | null; late: boolean }
 export type Progress = { student_id: string; present: number; absent: number; late: number; attendance_percent?: number | null; assigned: number; submitted: number; reviewed: number; average_score_percent?: number | null }
@@ -120,7 +128,8 @@ export const platform = {
   createEngagement: (body: Record<string, unknown>) => api.post<{ id: string }>(`${P}/engagements`, body),
   actOnEngagement: (id: string, body: Record<string, unknown>) => api.post<{ status?: string; classroom_id?: string }>(`${P}/engagements/${id}/actions`, body),
   payments: (id: string) => api.get<{ payments: Payment[] }>(`${P}/engagements/${id}/payments`),
-  paymentAction: (id: string, action: string, month: string, note = '') => api.post(`${P}/engagements/${id}/payments`, { action, month, note }),
+  paymentAction: (id: string, action: string, month: string, note = '', extra: PaymentSubmission = {}) => api.post(`${P}/engagements/${id}/payments`, { action, month, note, ...extra }),
+  paymentInstructions: (id: string, body: string, month?: string) => api.post<{ message_id: string }>(`${P}/engagements/${id}/payment-instructions`, { body, month: month || undefined }),
   review: (id: string, stars: number, body: string) => api.post(`${P}/engagements/${id}/review`, { stars, body }),
   reviewsFor: (userId: string) => api.get<{ reviews: Review[] }>(`${P}/users/${userId}/reviews`),
   replyReview: (id: string, reply: string) => api.post(`${P}/reviews/${id}/reply`, { reply }),

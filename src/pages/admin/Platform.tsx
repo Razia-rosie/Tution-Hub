@@ -34,7 +34,7 @@ export function Matches() {
   return (
     <div className="space-y-4">
       <PageTitle title="Matches" sub="Tuitions between tutors and families, from demo-class request to completion." />
-      <div className="max-w-xs"><Field label="Status">{(id) => <Select id={id} value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: '', label: 'All' }, ...['trial_requested', 'trial_scheduled', 'proposed', 'active', 'completed', 'cancelled'].map((v) => ({ value: v, label: statusLabel(v) }))]} />}</Field></div>
+      <div className="max-w-xs"><Field label="Status">{(id) => <Select id={id} value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: '', label: 'All' }, ...['trial_requested', 'trial_scheduled', 'proposed', 'agreed', 'active', 'completed', 'cancelled'].map((v) => ({ value: v, label: statusLabel(v) }))]} />}</Field></div>
       <Loaded load={load} empty={(d) => d.engagements.length ? null : { title: 'No tuitions', body: 'Nothing matches.' }}>
         {(d) => <Card pad={false}><ul className="divide-y divide-gray-100">{d.engagements.map((e) => <li key={e.id} className="flex flex-wrap justify-between gap-2 p-3 text-sm"><span><strong>{e.subject} · {e.class_name}</strong> · tutor {e.tutor_name} · {e.guardian_name ?? e.student_name ?? '—'} · {taka(e.monthly_fee)} · {fmtDate(e.created_at)}</span><Chip>{statusLabel(e.status)}</Chip></li>)}</ul></Card>}
       </Loaded>

@@ -138,6 +138,18 @@ func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, s *Service) {
 		respond(c, 200, err, gin.H{"payments": out})
 	})
 	a.POST("/engagements/:id/payments", s.hPaymentAction)
+	a.POST("/engagements/:id/payment-instructions", func(c *gin.Context) {
+		var in struct {
+			Month string `json:"month"`
+			Body  string `json:"body" validate:"required,max=2000"`
+		}
+		if err := s.bind(c, &in); err != nil {
+			fail(c, err)
+			return
+		}
+		id, err := s.SendPaymentInstructions(c.Request.Context(), uid(c), c.Param("id"), in.Month, in.Body)
+		respond(c, 201, err, gin.H{"message_id": id})
+	})
 	a.POST("/engagements/:id/review", s.hReview)
 	a.GET("/users/:id/reviews", func(c *gin.Context) {
 		out, err := s.ReviewsFor(c.Request.Context(), c.Param("id"))
@@ -742,16 +754,12 @@ func (s *Service) hEngagementAction(c *gin.Context) {
 }
 
 func (s *Service) hPaymentAction(c *gin.Context) {
-	var in struct {
-		Action string `json:"action" validate:"required,oneof=due mark_paid confirm dispute"`
-		Month  string `json:"month" validate:"required"`
-		Note   string `json:"note" validate:"max=255"`
-	}
+	var in paymentInput
 	if err := s.bind(c, &in); err != nil {
 		fail(c, err)
 		return
 	}
-	respond(c, 204, s.PaymentAction(c.Request.Context(), uid(c), c.Param("id"), in.Action, in.Month, in.Note), nil)
+	respond(c, 204, s.PaymentAction(c.Request.Context(), uid(c), c.Param("id"), in), nil)
 }
 
 func (s *Service) hReview(c *gin.Context) {

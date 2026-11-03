@@ -7,6 +7,7 @@ import { FamilySummary } from '../components/FamilyVerification'
 import { getWorkflowDashboard, updateProfile } from '../lib/api'
 import { platform, errMsg, fmtDate, fmtDateTime, taka } from '../lib/platform'
 import { useAction, useLoad } from '../lib/useLoad'
+import { tuitionStage } from './Tuitions'
 import { CLASSES, Loaded, MEDIUMS, PageTitle, Section, Stars, UserPhoto, opts, statusLabel } from './common'
 
 const list = (v: string) => v.split(',').map((x) => x.trim()).filter(Boolean)
@@ -278,7 +279,12 @@ export function Dashboard() {
       {(role === 'parent' || role === 'student') && <FamilySummary role={role} />}
       <Loaded load={load}>{(d) => {
         const active = d.engagements.filter((e) => e.status === 'active')
-        const waiting = d.engagements.filter((e) => (e.status === 'trial_requested' && role === 'tutor') || (e.status === 'proposed' && !(role === 'tutor' ? e.tutor_confirmed_at : e.client_confirmed_at)))
+        const invited = (e: (typeof d.engagements)[number]) => (e.classroom_requests ?? []).some((r) => r.user_id === user?.id && r.status !== 'accepted')
+        const waiting = d.engagements.filter((e) => (e.status === 'trial_requested' && role === 'tutor') || (e.status === 'proposed' && !(role === 'tutor' ? e.tutor_confirmed_at : e.client_confirmed_at))
+          || (e.status === 'agreed' && role === 'tutor' && !e.classroom_id) || (e.status === 'agreed' && invited(e)))
+        const what = (e: (typeof d.engagements)[number]) => e.status === 'trial_requested' ? 'demo class request' : e.status === 'proposed' ? 'terms to agree' : e.classroom_id ? 'classroom invitation' : 'create the classroom'
+        const tuitionsPath = `${base}/${role === 'tutor' ? 'my-students' : role === 'parent' ? 'tuitions' : 'my-tuition'}`
+        const open = d.engagements.filter((e) => e.status !== 'cancelled' && e.status !== 'completed' && e.status !== 'trial_declined')
         const next = d.classrooms.filter((c) => c.next_session).sort((a, b) => Date.parse(a.next_session!) - Date.parse(b.next_session!))[0]
         const stats: [string, string, string][] = role === 'coaching' && d.report ? [
           ['Students', String(d.report.students), `${base}/students`], ['Batches', String(d.report.batches), `${base}/batches`], ['Attendance', d.report.attendance_percent != null ? `${Math.round(d.report.attendance_percent)}%` : '—', `${base}/attendance`], ['Fees due', taka(d.report.fees_due), `${base}/payments`],
@@ -291,7 +297,8 @@ export function Dashboard() {
         return (
           <>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{stats.map(([label, value, to]) => <button key={label} className="text-left" onClick={() => nav(to)}><StatCard label={label} value={value} /></button>)}</div>
-            {waiting.length > 0 && <Section title="Needs your attention"><ul className="divide-y divide-gray-100">{waiting.map((e) => <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"><span>{e.subject} · {e.status === 'trial_requested' ? 'demo class request' : 'terms to confirm'}</span><Button size="sm" onClick={() => nav(`${base}/${role === 'tutor' ? 'my-students' : role === 'parent' ? 'tuitions' : 'my-tuition'}`)}>Review</Button></li>)}</ul></Section>}
+            {waiting.length > 0 && <Section title="Needs your attention"><ul className="divide-y divide-gray-100">{waiting.map((e) => <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"><span>{e.subject} · {what(e)}</span><Button size="sm" onClick={() => nav(tuitionsPath)}>Review</Button></li>)}</ul></Section>}
+            {role !== 'coaching' && open.length > 0 && <Section title="Tuition status"><ul className="divide-y divide-gray-100">{open.map((e) => { const st = tuitionStage(e); return <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"><span>{e.subject} · {e.class_name} · {role === 'tutor' ? (e.student_name ?? e.guardian_name ?? '') : e.tutor_name}</span><Chip tone={st.tone}>{st.label}</Chip></li> })}</ul></Section>}
             <Section title="Next class">{next ? <p className="text-sm">{fmtDateTime(next.next_session)} · {next.name}{next.child_name ? ` · ${next.child_name}` : ''} <Button size="sm" variant="tertiary" onClick={() => nav(`${base}/schedule/${next.id}`)}>Open</Button></p> : <p className="text-sm text-gray-600">No upcoming classes scheduled.</p>}</Section>
             {role === 'parent' && d.links.filter((l) => l.status === 'approved').length === 0 && <Section title="Get started"><p className="text-sm">Get verified, then request a student account for your child with their own email.</p><Button className="mt-2" size="sm" onClick={() => nav(`${base}/verification`)}>Open verification</Button></Section>}
             {role === 'student' && verification.student === 'verified' && d.links.some((l) => l.status === 'pending') && <Section title="Guardian request"><p className="text-sm">A guardian asked to link to your account.</p><Button className="mt-2" size="sm" onClick={() => nav(`${base}/profile`)}>Review</Button></Section>}
