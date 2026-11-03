@@ -8,13 +8,13 @@ import { setCreatedAccount, createdAccount } from '../../lib/account'
 import { useStore } from '../../lib/store'
 import { ROLES, type Role } from '../../lib/nav'
 import { maskEmail, strength, validEmail } from '../../lib/validate'
-import { registerAccount, requestEmailVerification, verifyEmail } from '../../lib/api'
+import { ApiError, checkStudentInvitation, registerAccount, requestEmailVerification, verifyEmail } from '../../lib/api'
 
 const PUBLIC_ROLES: Role[] = ['tutor', 'student', 'parent', 'coaching']
 const ROLE_ICON = { tutor: GraduationCap, student: HeartHandshake, parent: Users, coaching: Building2 } as Record<string, typeof Users>
 const ROLE_LABEL: Record<string, string> = { tutor: 'Tutor', student: 'Student', parent: 'Parent / Guardian', coaching: 'Coaching / Institute' }
 const ROLE_BLURB: Record<string, string> = {
-  tutor: 'Offer tuition, build a verified profile and grow your reputation.', student: 'Find a tutor, track homework and see your own progress.',
+  tutor: 'Offer tuition, build a verified profile and grow your reputation.', student: 'Use the email your verified parent or guardian submitted for you.',
   parent: 'Find a trusted tutor and follow your child with plain-language updates.', coaching: 'Run batches, classes, exams and parent reports in one place.',
 }
 
@@ -39,8 +39,16 @@ export function SignUp() {
   useEffect(() => { if (validPreset) patchSignup({ role: validPreset }) }, [validPreset]) // eslint-disable-line
   const [name, setName] = useState(signup?.name ?? ''); const [email, setEmail] = useState(signup?.email ?? ''); const [pw, setPw] = useState(''); const [pw2, setPw2] = useState('')
   const [terms, setTerms] = useState(false); const [touched, setTouched] = useState(false); const [busy, setBusy] = useState(false); const [taken, setTaken] = useState(false)
+  const [invite, setInvite] = useState<{ email: string; allowed: boolean; message?: string } | null>(null)
   if (preset && !validPreset) return <Navigate to="/signup" replace />
   const role = validPreset ?? signup.role
+  // Students may only register with the exact email a verified parent submitted and an administrator allowed.
+  const checkInvite = () => {
+    if (role !== 'student' || !validEmail(email)) return
+    const value = email.trim()
+    checkStudentInvitation(value).then((r) => setInvite({ email: value, allowed: r.allowed, message: r.message })).catch(() => setInvite(null))
+  }
+  const inviteProblem = role === 'student' && invite && invite.email === email.trim() && !invite.allowed ? invite.message : '' 
   const err = {
     name: name.trim().split(/\s+/).filter(Boolean).length < 2 ? 'Enter your first and last name.' : '',
     email: !email ? 'Enter your email address.' : !validEmail(email) ? 'This email looks incomplete. Use a format like name@example.com.' : '',
@@ -66,10 +74,13 @@ export function SignUp() {
         setSession(tokens.access_token, tokens.refresh_token)
         setAuthenticatedUser(user)
         signIn(user.role)
-        // Tutors and coaching centres continue straight into verification as part of registration.
-        nav(user.role === 'tutor' || user.role === 'coaching' ? `/app/${user.role}/verification` : '/auth/gate')
+        // Every role continues straight into its verification as part of registration.
+        nav(`/app/${user.role}/verification`)
       })
-      .catch((error) => setTaken(error instanceof Error && error.message.includes('already exists')))
+      .catch((error) => {
+        if (error instanceof ApiError && String(error.details.code ?? '').startsWith('invitation_')) setInvite({ email: email.trim(), allowed: false, message: error.message })
+        else setTaken(error instanceof Error && error.message.includes('already exists'))
+      })
       .finally(() => setBusy(false))
   }
   return (
@@ -77,8 +88,10 @@ export function SignUp() {
       <AuthHead icon={<UserPlus size={22} strokeWidth={1.5} aria-hidden />} title="Create your account" lead={role ? <>Joining as <Chip tone="blue">{ROLE_LABEL[role]}</Chip> <Link to="/signup/role" className="ml-1 text-sm font-semibold text-blue-600 hover:underline">Change</Link></> : 'It takes about two minutes. You choose your role next.'} />
       <form onSubmit={submit} noValidate className="space-y-4">
         {taken && <Notice>That email already belongs to an account. <Link to="/login" className="font-semibold underline">Log in instead</Link>, or use a different email.</Notice>}
+        {role === 'student' && <Notice tone="blue">Students join through their parent or guardian. Use the <strong>exact email</strong> your parent submitted on their verification page, after an administrator has allowed it. You choose your own password.</Notice>}
+        {inviteProblem && <Notice>{inviteProblem}</Notice>}
         <Field label="Full name" error={s('name')}>{(id) => <Input id={id} autoComplete="name" aria-invalid={!!s('name')} value={name} onChange={(e) => setName(e.target.value)} />}</Field>
-        <Field label="Email" error={s('email')}>{(id) => <Input id={id} type="email" autoComplete="email" aria-invalid={!!s('email')} value={email} onChange={(e) => setEmail(e.target.value)} />}</Field>
+        <Field label="Email" error={s('email')}>{(id) => <Input id={id} type="email" autoComplete="email" aria-invalid={!!s('email') || !!inviteProblem} value={email} onChange={(e) => setEmail(e.target.value)} onBlur={checkInvite} />}</Field>
         <Field label="Password" error={s('pw')}>{(id) => <PasswordInput id={id} auto="new-password" value={pw} onChange={setPw} invalid={!!s('pw')} />}</Field>
         <StrengthMeter pw={pw} />
         <Field label="Confirm password" error={s('pw2')}>{(id) => <PasswordInput id={id} auto="new-password" value={pw2} onChange={setPw2} invalid={!!s('pw2')} />}</Field>
@@ -124,9 +137,10 @@ export function RoleSelect() {
             setSession(tokens.access_token, tokens.refresh_token)
             setAuthenticatedUser(user)
             signIn(user.role)
-            nav(user.role === 'tutor' || user.role === 'coaching' ? `/app/${user.role}/verification` : '/auth/gate')
+            nav(`/app/${user.role}/verification`)
           })
-          .catch(() => setErr(true))
+          // A student without an approved invitation, for example, continues on the full form where the reason is shown.
+          .catch(() => nav(`/signup/${pick}`))
           .finally(() => setBusy(false))
       }}>Continue as {pick ? ROLE_LABEL[pick] : '…'}</Button>
       <p className="mt-4 text-center text-xs text-gray-600">Looking at the platform first? <Link to="/how-it-works" className="font-semibold text-blue-600 hover:underline">See how it works</Link></p>

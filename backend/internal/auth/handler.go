@@ -50,6 +50,7 @@ func RegisterRoutes(r *gin.RouterGroup, service *Service) {
 	}
 	a := r.Group("/auth")
 	a.POST("/register", limitByIP(l.signupIP), register(service))
+	a.POST("/student-invitation/check", limitByIP(l.signupIP), checkStudentInvitation(service))
 	a.POST("/login", login(service, l))
 	a.POST("/refresh", refresh(service))
 	a.POST("/logout", logout(service))
@@ -138,6 +139,11 @@ func register(s *Service) gin.HandlerFunc {
 		}
 		if errors.Is(err, ErrRegistrationClosed) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "new registrations are temporarily closed"})
+			return
+		}
+		var invitation *InvitationError
+		if errors.As(err, &invitation) {
+			c.JSON(http.StatusForbidden, gin.H{"error": invitation.Message(), "code": "invitation_" + invitation.Code})
 			return
 		}
 		if err != nil {
@@ -391,4 +397,27 @@ func bind(c *gin.Context, target interface{}) bool {
 
 func publicUser(user User) gin.H {
 	return gin.H{"id": user.ID, "name": user.Name, "email": user.Email, "phone": user.Phone, "role": user.Role, "account_status": user.AccountStatus, "email_verified_at": user.EmailVerifiedAt, "created_at": user.CreatedAt}
+}
+
+// checkStudentInvitation lets the student sign-up page say early whether an
+// email may be used. The email travels in the body, never in the URL.
+func checkStudentInvitation(s *Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Email string `json:"email" validate:"required,email,max=255"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		err := s.CheckStudentInvitation(c.Request.Context(), req.Email)
+		var invitation *InvitationError
+		switch {
+		case errors.As(err, &invitation):
+			c.JSON(http.StatusOK, gin.H{"allowed": false, "code": "invitation_" + invitation.Code, "message": invitation.Message()})
+		case err != nil:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not check the invitation"})
+		default:
+			c.JSON(http.StatusOK, gin.H{"allowed": true})
+		}
+	}
 }

@@ -100,6 +100,9 @@ type AdminApplication struct {
 	// SubmissionCount > 1 marks a resubmitted application.
 	SubmissionCount int `db:"submission_count" json:"submission_count"`
 	DocumentCount   int `db:"document_count" json:"document_count"`
+	// Family links a parent application to its child invitations, and a
+	// student application to the parent who invited them.
+	Family any `db:"-" json:"family,omitempty"`
 }
 
 func (s *Service) GetDashboard(ctx context.Context, userID string) (map[string]any, error) {
@@ -152,6 +155,12 @@ func (s *Service) UpsertProfile(ctx context.Context, userID string, input map[st
 	// The reviewer must see exactly what was submitted, so the fields under review
 	// freeze while an application is pending; other profile fields stay editable.
 	reviewed := map[string]bool{"display_name": true, "institution": true, "education": true, "subjects": true, "classes": true, "areas": true}
+	if familyRole(lock.Role) {
+		reviewed = map[string]bool{}
+		for _, r := range familyProfileRequirements[lock.Role] {
+			reviewed[r.Column] = true
+		}
+	}
 	if verifiableRole(lock.Role) && (lock.Status.String == "pending" || lock.Status.String == "under_review") {
 		for key := range input {
 			if reviewed[key] {
@@ -230,8 +239,11 @@ func (s *Service) SubmitVerification(ctx context.Context, userID string) (Verifi
 		return Verification{}, ErrForbidden
 	}
 	// Approved, rejected, suspended or interviewing accounts cannot reset their
-	// application to pending by submitting again.
-	if account.Status != "pending" && account.Status != "resubmission_required" {
+	// application to pending by submitting again. Parents and students who
+	// registered before family verification existed are already active; they
+	// may still submit once, and keep their access while it is reviewed.
+	grandfathered := familyRole(account.Role) && account.Status == "active"
+	if account.Status != "pending" && account.Status != "resubmission_required" && !grandfathered {
 		return Verification{}, ErrInvalidState
 	}
 	var application struct {
@@ -258,12 +270,20 @@ func (s *Service) SubmitVerification(ctx context.Context, userID string) (Verifi
 		}
 	}
 	missing = append(missing, missingRequired(account.Role, uploaded)...)
-	var completion uint8
-	if err = tx.GetContext(ctx, &completion, `SELECT COALESCE((SELECT completion_percent FROM role_profiles WHERE user_id = ?), 0)`, userID); err != nil {
-		return Verification{}, err
-	}
-	if completion < 100 {
-		missing = append(missing, "Complete profile details")
+	if familyRole(account.Role) {
+		profileMissing, err := s.missingFamilyProfile(ctx, tx, account.Role, userID)
+		if err != nil {
+			return Verification{}, err
+		}
+		missing = append(missing, profileMissing...)
+	} else {
+		var completion uint8
+		if err = tx.GetContext(ctx, &completion, `SELECT COALESCE((SELECT completion_percent FROM role_profiles WHERE user_id = ?), 0)`, userID); err != nil {
+			return Verification{}, err
+		}
+		if completion < 100 {
+			missing = append(missing, "Complete profile details")
+		}
 	}
 	if len(missing) > 0 {
 		return Verification{}, &IncompleteError{Missing: missing}
@@ -272,8 +292,10 @@ func (s *Service) SubmitVerification(ctx context.Context, userID string) (Verifi
 	if _, err = tx.ExecContext(ctx, `UPDATE verification_applications SET status = 'pending', submitted_at = UTC_TIMESTAMP(6), rejection_reason = NULL, correction_request = NULL WHERE id = ?`, application.ID); err != nil {
 		return Verification{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE users SET account_status = 'pending' WHERE id = ?`, userID); err != nil {
-		return Verification{}, err
+	if !grandfathered {
+		if _, err = tx.ExecContext(ctx, `UPDATE users SET account_status = 'pending' WHERE id = ?`, userID); err != nil {
+			return Verification{}, err
+		}
 	}
 	action := "verification_submitted"
 	if application.Status == "resubmission_required" {
@@ -304,8 +326,9 @@ func (s *Service) ReviewVerification(ctx context.Context, reviewerID, applicatio
 	var application struct {
 		UserID string `db:"user_id"`
 		Status string `db:"status"`
+		Role   string `db:"role"`
 	}
-	if err = tx.GetContext(ctx, &application, `SELECT user_id, status FROM verification_applications WHERE id = ? FOR UPDATE`, applicationID); err != nil {
+	if err = tx.GetContext(ctx, &application, `SELECT v.user_id, v.status, u.role FROM verification_applications v JOIN users u ON u.id = v.user_id WHERE v.id = ? FOR UPDATE`, applicationID); err != nil {
 		_ = tx.Rollback()
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
@@ -323,6 +346,16 @@ func (s *Service) ReviewVerification(ctx context.Context, reviewerID, applicatio
 		return err
 	}
 	accountStatus := decisionAccountStatus(decision, completion)
+	if familyRole(application.Role) {
+		// Parents and students have no separate profile-completion step.
+		if decision == "approved" {
+			accountStatus = "active"
+		}
+		if err = s.applyFamilyDecision(ctx, tx, reviewerID, application.Role, userID, decision); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
 	var rejectionReason, correctionRequest any
 	switch decision {
 	case "rejected":
@@ -339,6 +372,12 @@ func (s *Service) ReviewVerification(ctx context.Context, reviewerID, applicatio
 	}
 	if err == nil {
 		title, body := decisionNotification(decision)
+		if familyRole(application.Role) && decision == "approved" {
+			body = "An administrator approved your verification. Your account now has full access."
+			if application.Role == "parent" {
+				body = "An administrator approved your verification. Your child's student account is reviewed separately."
+			}
+		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO notifications (id, user_id, kind, title, body) VALUES (?, ?, ?, ?, ?)`, uuid.NewString(), userID, "verification_"+decision, title, body)
 	}
 	if err != nil {
@@ -403,7 +442,20 @@ func (s *Service) ListVerifications(ctx context.Context, status, role string) ([
 		query += ` WHERE ` + strings.Join(conditions, " AND ")
 	}
 	query += ` ORDER BY v.submitted_at ASC`
-	return rows, s.db.SelectContext(ctx, &rows, query, args...)
+	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		if !familyRole(rows[i].Role) {
+			continue
+		}
+		family, err := s.familyContext(ctx, rows[i].Role, rows[i].UserID)
+		if err != nil {
+			return nil, err
+		}
+		rows[i].Family = family
+	}
+	return rows, nil
 }
 
 func (s *Service) RecordInterviewOutcome(ctx context.Context, reviewerID, interviewID, status, notes string) error {
@@ -415,7 +467,8 @@ func (s *Service) RecordInterviewOutcome(ctx context.Context, reviewerID, interv
 		return err
 	}
 	var applicationID, currentStatus string
-	if err = tx.QueryRowxContext(ctx, `SELECT application_id, status FROM interviews WHERE id = ? FOR UPDATE`, interviewID).Scan(&applicationID, &currentStatus); err != nil {
+	var scheduledAt time.Time
+	if err = tx.QueryRowxContext(ctx, `SELECT application_id, status, scheduled_at FROM interviews WHERE id = ? FOR UPDATE`, interviewID).Scan(&applicationID, &currentStatus, &scheduledAt); err != nil {
 		_ = tx.Rollback()
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
@@ -442,6 +495,11 @@ func (s *Service) RecordInterviewOutcome(ctx context.Context, reviewerID, interv
 	}
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `INSERT INTO audit_logs (id, actor_id, subject_user_id, action, metadata) VALUES (?, ?, ?, ?, JSON_OBJECT('interview_id', ?, 'notes', ?))`, uuid.NewString(), reviewerID, userID, "interview_"+status, interviewID, notes)
+	}
+	if err == nil && status == "cancelled" {
+		// The applicant's notification and meeting message must not keep showing a cancelled interview as on.
+		date, clock := meetingWhen(scheduledAt)
+		err = deliverMeeting(ctx, tx, reviewerID, userID, "interview_cancelled", "Interview cancelled", "Your verification interview on "+date+" at "+clock+" was cancelled. Details are in your Messages.", interviewCancelledMessage(scheduledAt))
 	}
 	if err != nil {
 		_ = tx.Rollback()
@@ -499,7 +557,10 @@ func (s *Service) CreateInterview(ctx context.Context, reviewerID, applicationID
 		_, err = tx.ExecContext(ctx, `UPDATE users SET account_status = 'interview_scheduled' WHERE id = ?`, userID)
 	}
 	if err == nil {
-		_, err = tx.ExecContext(ctx, `INSERT INTO notifications (id, user_id, kind, title, body) VALUES (?, ?, 'interview_scheduled', 'Interview scheduled', 'An administrator scheduled your verification interview.')`, uuid.NewString(), userID)
+		var at time.Time
+		if at, err = time.Parse("2006-01-02 15:04:05.000000", scheduledAt); err == nil {
+			err = deliverMeeting(ctx, tx, reviewerID, userID, "interview_scheduled", "Interview scheduled", interviewScheduledNotification(mode, at), interviewScheduledMessage(mode, location, at))
+		}
 	}
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `INSERT INTO audit_logs (id, actor_id, subject_user_id, action, metadata) VALUES (?, ?, ?, 'interview_scheduled', JSON_OBJECT('application_id', ?, 'mode', ?, 'scheduled_at', ?))`, uuid.NewString(), reviewerID, userID, applicationID, mode, scheduledAt)
@@ -512,7 +573,12 @@ func (s *Service) CreateInterview(ctx context.Context, reviewerID, applicationID
 }
 
 func (s *Service) Notifications(ctx context.Context, userID string) ([]map[string]any, error) {
-	rows, err := s.db.QueryxContext(ctx, `SELECT id, kind, title, body, read_at, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100`, userID)
+	// A meeting notification shares its id with the message that carries the
+	// details; the conversation is returned only when this user takes part in it.
+	rows, err := s.db.QueryxContext(ctx, `SELECT n.id, n.kind, n.title, n.body, n.read_at, n.created_at, cp.conversation_id FROM notifications n
+		LEFT JOIN messages m ON m.id = n.id
+		LEFT JOIN conversation_participants cp ON cp.conversation_id = m.conversation_id AND cp.user_id = n.user_id
+		WHERE n.user_id = ? ORDER BY n.created_at DESC LIMIT 100`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -521,10 +587,15 @@ func (s *Service) Notifications(ctx context.Context, userID string) ([]map[strin
 	for rows.Next() {
 		var id, kind, title, body string
 		var readAt, createdAt *time.Time
-		if err := rows.Scan(&id, &kind, &title, &body, &readAt, &createdAt); err != nil {
+		var conversationID *string
+		if err := rows.Scan(&id, &kind, &title, &body, &readAt, &createdAt, &conversationID); err != nil {
 			return nil, err
 		}
-		result = append(result, map[string]any{"id": id, "kind": kind, "title": title, "body": body, "read_at": readAt, "created_at": createdAt})
+		item := map[string]any{"id": id, "kind": kind, "title": title, "body": body, "read_at": readAt, "created_at": createdAt}
+		if conversationID != nil {
+			item["conversation_id"] = *conversationID
+		}
+		result = append(result, item)
 	}
 	return result, rows.Err()
 }

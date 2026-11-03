@@ -32,7 +32,7 @@ Keep `parseTime=true&charset=utf8mb4&loc=UTC`. Never commit a real connection st
    pending files, then without `-dry-run` to apply them.
 3. Create the first administrator with `go run ./cmd/bootstrap-admin` ([LOCAL_SETUP.md](LOCAL_SETUP.md)).
 
-A new local Docker volume applies `001`–`005` automatically on first start.
+A new local Docker volume applies `001`–`005` automatically on first start; apply `006` with `go run ./cmd/migrate`.
 
 ## Migrations
 
@@ -43,10 +43,11 @@ A new local Docker volume applies `001`–`005` automatically on first start.
 | `003_platform.sql` | marketplace, messaging, tuition agreements, classrooms, coaching, reviews, payments, support, settings; extra profile and listing columns; indexes |
 | `004_session_ids.sql` | `refresh_tokens.session_id`, so logout, password reset and suspension end a session's access tokens immediately |
 | `005_stored_files.sql` | `stored_files` (uploaded file contents when `FILE_STORAGE=database`) |
+| `006_family_verification.sql` | `student_invitations` (a parent's request for a child's student account, admin permission, expiry, the student it created) |
 
 Rules:
 
-- Migrations are **additive**. `003`–`005` use `CREATE TABLE IF NOT EXISTS` and guards every new column
+- Migrations are **additive**. `003`–`006` use `CREATE TABLE IF NOT EXISTS` and guards every new column
   and index with an `information_schema` check, so it is safe to re-run.
 - Apply with `go run ./cmd/migrate` from `backend/` after taking a backup ([LOCAL_SETUP.md](LOCAL_SETUP.md)).
   The runner records versions in `schema_migrations`, baselines databases created before it
@@ -76,7 +77,8 @@ Rules:
 | `tuition_listings` | Tuition posts by parents/students | status open/paused/filled/closed; `student_id` has no FK |
 | `tuition_applications` | Tutor applications | unique (listing, tutor) |
 | `saved_listings` | Tutor bookmarks | PK (user, listing) |
-| `guardian_student_links` | Parent ↔ student, approved by the student | unique (guardian, student); pending/approved/rejected/revoked |
+| `guardian_student_links` | Parent ↔ student. Links made from an invitation are approved by the admin's review of the student; older links by the student | unique (guardian, student); pending/approved/rejected/revoked |
+| `student_invitations` | A parent's request for a student account for their child's email; an admin allows it (30 days) before the child can register with that exact email | one row per child email (reused after refusal or cancellation); pending_approval/approved/rejected/registered/cancelled; `student_id` unique |
 | `connection_requests` | Chat requests | status pending/accepted/declined/cancelled |
 | `conversations`, `conversation_participants`, `messages` | Persistent messaging | participant PK (conversation, user) with `last_read_at` |
 | `user_blocks` | Blocks | PK (blocker, blocked) |

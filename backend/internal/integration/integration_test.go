@@ -285,7 +285,9 @@ func TestGlobalIntegrityInvariants(t *testing.T) {
 	checks := map[string]string{
 		"pending or decided applications without submitted_at":                             `SELECT COUNT(*) FROM verification_applications WHERE status NOT IN ('draft') AND submitted_at IS NULL`,
 		"decided applications without reviewer or time":                                    `SELECT COUNT(*) FROM verification_applications WHERE status IN ('approved','rejected','resubmission_required') AND (reviewed_at IS NULL OR reviewer_id IS NULL)`,
-		"applications owned by admins, students or parents":                                `SELECT COUNT(*) FROM verification_applications v JOIN users u ON u.id = v.user_id WHERE u.role NOT IN ('tutor','coaching')`,
+		"applications owned by admins":                                                     `SELECT COUNT(*) FROM verification_applications v JOIN users u ON u.id = v.user_id WHERE u.role = 'admin'`,
+		"registered invitations without a student":                                         `SELECT COUNT(*) FROM student_invitations WHERE status = 'registered' AND student_id IS NULL`,
+		"approved students whose inviting parent is not approved":                          `SELECT COUNT(*) FROM student_invitations i JOIN verification_applications sv ON sv.user_id = i.student_id AND sv.status = 'approved' LEFT JOIN verification_applications pv ON pv.user_id = i.parent_id WHERE COALESCE(pv.status, '') <> 'approved'`,
 		"documents whose application is missing":                                           `SELECT COUNT(*) FROM verification_documents d LEFT JOIN verification_applications v ON v.id = d.application_id WHERE v.id IS NULL`,
 		"suspended users with live refresh sessions":                                       `SELECT COUNT(*) FROM refresh_tokens t JOIN users u ON u.id = t.user_id WHERE u.account_status = 'suspended' AND t.revoked_at IS NULL AND t.expires_at > UTC_TIMESTAMP(6)`,
 		"approved applications whose account is not active, suspended or awaiting profile": `SELECT COUNT(*) FROM verification_applications v JOIN users u ON u.id = v.user_id WHERE v.status = 'approved' AND u.account_status NOT IN ('active','suspended','profile_incomplete')`,
@@ -323,7 +325,7 @@ func TestSecurityControls(t *testing.T) {
 	})
 
 	t.Run("refresh token reuse ends every session", func(t *testing.T) {
-		u := e.register("reuse", "student")
+		u := e.register("reuse", "parent")
 		first := e.do("POST", "/api/v1/auth/refresh", "", map[string]string{"refresh_token": u.refresh})
 		if first.Code != http.StatusOK {
 			t.Fatalf("refresh: %d", first.Code)
@@ -366,7 +368,7 @@ func TestSecurityControls(t *testing.T) {
 	})
 
 	t.Run("password reset rejects every earlier access token", func(t *testing.T) {
-		u := e.register("reset", "student")
+		u := e.register("reset", "parent")
 		other := e.login(u.email, "integration-pass-1")
 		forgot := e.do("POST", "/api/v1/auth/forgot-password", "", map[string]string{"email": u.email})
 		resetToken, _ := forgot.Body["development_token"].(string)
@@ -434,15 +436,23 @@ func TestSecurityControls(t *testing.T) {
 		}
 	})
 
-	t.Run("students and parents cannot enter verification", func(t *testing.T) {
-		for _, role := range []string{"student", "parent"} {
-			u := e.register("noverify-"+role, role)
-			if r := e.upload(u.access, "identity", pngBytes()); r.Code != http.StatusForbidden {
-				t.Errorf("%s upload: want 403, got %d", role, r.Code)
-			}
-			if r := e.do("POST", "/api/v1/workflow/verification/submit", u.access, nil); r.Code != http.StatusForbidden {
-				t.Errorf("%s submit: want 403, got %d", role, r.Code)
-			}
+	t.Run("family verification uses its own documents and invitations", func(t *testing.T) {
+		parent := e.register("family-parent", "parent")
+		if r := e.upload(parent.access, "identity", pngBytes()); r.Code != http.StatusBadRequest {
+			t.Errorf("parent uploading a tutor document type: want 400, got %d", r.Code)
+		}
+		if r := e.upload(parent.access, "parent_nid", pngBytes()); r.Code != http.StatusCreated {
+			t.Errorf("parent NID upload: want 201, got %d", r.Code)
+		}
+		if r := e.do("POST", "/api/v1/workflow/verification/submit", parent.access, nil); r.Code != http.StatusUnprocessableEntity {
+			t.Errorf("parent submit without the child's birth certificate: want 422, got %d", r.Code)
+		}
+		email := fmt.Sprintf("it-child-%s@tuitionhub.test", e.run)
+		if r := e.do("POST", "/api/v1/workflow/family/invitations", parent.access, map[string]string{"child_email": email, "relationship": "mother"}); r.Code != http.StatusConflict {
+			t.Errorf("invitation before submitting verification: want 409, got %d", r.Code)
+		}
+		if r := e.do("POST", "/api/v1/auth/register", "", map[string]string{"name": "Uninvited Child", "email": email, "password": "integration-pass-1", "role": "student"}); r.Code != http.StatusForbidden {
+			t.Errorf("student without invitation: want 403, got %d", r.Code)
 		}
 	})
 

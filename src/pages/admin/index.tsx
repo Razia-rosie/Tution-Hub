@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import Verification from './Verification'
+import Family from './Family'
 import Overview from './Overview'
 import Users from './Users'
 import Audit from './Audit'
@@ -8,6 +9,7 @@ import { Awards, Matches, Payments, Reports, Reviews, Safety, Settings, Tickets,
 const MAP: Record<string, (sub: string) => ReactNode> = {
   overview: () => <Overview />,
   verification: () => <Verification />,
+  family: (sub) => <Family sub={sub} />,
   users: () => <Users />,
   tutors: () => <Users role="tutor" />,
   coaching: () => <Users role="coaching" />,

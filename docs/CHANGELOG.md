@@ -4,6 +4,16 @@ All notable changes to TuitionHub. Dates are 2026; commit hashes refer to this r
 
 ## Unreleased
 
+### Added
+- Parent and student verification. A parent uploads their NID and their child's birth certificate
+  and is reviewed by an administrator; the parent then gives a separate email for the child; an
+  administrator allows that email to register; the child signs up as a Student with that exact
+  email and their own password, uploads their birth certificate and is reviewed separately.
+  Students can no longer sign up without such an invitation. Parents and students are read-only
+  until approved. New admin section "Parent & Student Verification", new parent and student
+  verification pages, migration `006_family_verification.sql`, `tests/family-e2e.mjs` and
+  `tests/family-browser.mjs`. Existing parent and student accounts keep their status.
+
 ### Docs
 - Repository documentation reorganised: new README with live links, screenshots and verified test
   results; `docs/` renamed to PROJECT_OVERVIEW, FEATURES (with verification levels), ARCHITECTURE,

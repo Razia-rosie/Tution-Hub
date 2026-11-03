@@ -32,7 +32,11 @@ func registerRouter(t *testing.T) (*gin.Engine, sqlmock.Sqlmock) {
 }
 
 func postRegister(r *gin.Engine, name string) *httptest.ResponseRecorder {
-	body, _ := json.Marshal(map[string]string{"name": name, "email": "name-test@tuitionhub.test", "password": "unit-test-pass-1", "role": "student"})
+	return postRegisterAs(r, name, "parent")
+}
+
+func postRegisterAs(r *gin.Engine, name, role string) *httptest.ResponseRecorder {
+	body, _ := json.Marshal(map[string]string{"name": name, "email": "name-test@tuitionhub.test", "password": "unit-test-pass-1", "role": role})
 	req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -45,7 +49,7 @@ func postRegister(r *gin.Engine, name string) *httptest.ResponseRecorder {
 func expectAccountCreated(mock sqlmock.Sqlmock, want string) {
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT CAST(setting_value AS CHAR) FROM platform_settings")).WillReturnRows(sqlmock.NewRows([]string{"v"}))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO users (id, name, email, phone, password_hash, role, account_status)")).
-		WithArgs(sqlmock.AnyArg(), want, "name-test@tuitionhub.test", nil, sqlmock.AnyArg(), "student", "active").
+		WithArgs(sqlmock.AnyArg(), want, "name-test@tuitionhub.test", nil, sqlmock.AnyArg(), "parent", "pending").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO refresh_tokens")).WillReturnResult(sqlmock.NewResult(1, 1))
 }

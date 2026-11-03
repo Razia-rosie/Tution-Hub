@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { Bell } from 'lucide-react'
 import { Button, Card, EmptyState } from './ui'
 import { getNotifications, markNotificationsRead, type AppNotification } from '../lib/api'
+import { useStore } from '../lib/store'
 
 /** The signed-in user's notifications from the backend (verification decisions, interviews, account changes). */
 export default function RealNotifications() {
   const [items, setItems] = useState<AppNotification[] | null>(null)
   const [error, setError] = useState('')
+  const { user } = useStore()
+  const nav = useNavigate()
   const load = () => getNotifications().then((r) => setItems(r.notifications ?? [])).catch((e) => setError(e instanceof Error ? e.message : 'Could not load notifications.'))
   useEffect(() => { void load() }, [])
 
@@ -15,6 +19,11 @@ export default function RealNotifications() {
   }
   const markOne = async (id: string) => {
     try { await markNotificationsRead(id); await load(); window.dispatchEvent(new Event('notifications:changed')) } catch (e) { setError(e instanceof Error ? e.message : 'Could not update notifications.') }
+  }
+  // Meeting notifications open the message with the same details in Messages.
+  const openMessage = (n: AppNotification) => {
+    if (!n.read_at) void markNotificationsRead(n.id).then(() => window.dispatchEvent(new Event('notifications:changed'))).catch(() => {})
+    nav(`/app/${user?.role}/messages/${n.conversation_id}`)
   }
   const unread = items?.filter((n) => !n.read_at).length ?? 0
 
@@ -38,7 +47,10 @@ export default function RealNotifications() {
                   <p className="mt-0.5 break-words text-sm">{n.body}</p>
                   <p className="mt-1 text-xs text-gray-600">{new Date(n.created_at).toLocaleString()}</p>
                 </div>
-                {!n.read_at && <Button size="sm" variant="tertiary" onClick={() => void markOne(n.id)}>Mark read</Button>}
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  {n.conversation_id && <Button size="sm" variant="secondary" onClick={() => openMessage(n)}>Open message</Button>}
+                  {!n.read_at && <Button size="sm" variant="tertiary" onClick={() => void markOne(n.id)}>Mark read</Button>}
+                </div>
               </li>
             ))}
           </ul>

@@ -67,7 +67,15 @@ func (s *Service) RespondLink(ctx context.Context, actorID, linkID string, accep
 	} else if err != nil {
 		return err
 	}
+	// A link created when a child registered from a parent's invitation is
+	// decided by the administrator's review of the student, not by the student.
+	var invited int
+	if err := s.db.GetContext(ctx, &invited, `SELECT COUNT(*) FROM student_invitations WHERE parent_id = ? AND student_id = ? AND status = 'registered'`, l.GuardianID, l.StudentID); err != nil {
+		return err
+	}
 	switch {
+	case invited > 0 && l.Status == "pending":
+		return conflict("an administrator approves this link when reviewing the student account")
 	case actorID == l.StudentID && l.Status == "pending":
 		next := "rejected"
 		if accept {

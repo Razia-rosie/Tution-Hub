@@ -10,6 +10,7 @@ const Messages = lazy(() => import('../features/Messages'))
 const Classrooms = lazy(() => import('../features/Classrooms'))
 const Tuitions = lazy(() => import('../features/Tuitions'))
 const RealVerification = lazy(() => import('../components/RealVerification'))
+const FamilyVerification = lazy(() => import('../components/FamilyVerification'))
 const AdminRoutes = lazy(async () => {
   const mod = (await import('./admin')).default
   return { default: ({ page, sub }: { page: string; sub: string }) => (mod.has(page) ? <>{mod.render(page, sub)}</> : <NotFound />) }
@@ -58,10 +59,10 @@ const ROUTES: Record<Exclude<Role, 'admin'>, Record<string, Render>> = {
     home: () => <Dashboard />, 'my-tuition': () => <Tuitions title="My tuition" />,
     schedule: room('Schedule', 'Schedule'), attendance: room('Attendance', 'Attendance'), homework: room('Homework', 'Homework'), assignments: room('Homework', 'Assignments'),
     progress: () => <Progress mode="student" />, tutor: () => <Tuitions title="My tutors" sub="Tutors you study with." filter="active" />, messages,
-    profile: () => <Profile />, 'find-tutor': () => <FindTutors role="student" />, notifications: () => <RealNotifications />, safety: () => <Safety />,
+    profile: () => <Profile />, 'find-tutor': () => <FindTutors role="student" />, verification: () => <FamilyVerification role="student" />, notifications: () => <RealNotifications />, safety: () => <Safety />,
   },
   parent: {
-    dashboard: () => <Dashboard />, children: () => <Children />, 'find-tutor': () => <FindTutors role="parent" />, 'my-posts': () => <MyPosts role="parent" />,
+    dashboard: () => <Dashboard />, verification: () => <FamilyVerification role="parent" />, children: () => <Children />, 'find-tutor': () => <FindTutors role="parent" />, 'my-posts': () => <MyPosts role="parent" />,
     tuitions: () => <Tuitions title="Tuitions" />, schedule: room('Schedule', 'Schedule'), attendance: room('Attendance', 'Attendance'), homework: room('Homework', 'Homework and assignments'),
     progress: () => <Progress mode="parent" />, payments: () => <PaymentsOverview />, messages, notifications: () => <RealNotifications />, safety: () => <Safety />, settings: () => <Profile />,
   },

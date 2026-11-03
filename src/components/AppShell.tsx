@@ -44,8 +44,8 @@ export default function AppShell() {
   const items = NAV[role]
 
   const vstate = s.verification[role]
-  // Only tutors and coaching centres go through verification.
-  const needsVerify = (role === 'tutor' || role === 'coaching') && vstate !== 'verified' && vstate !== 'active'
+  // Every public role is verified by hand before it gets full access.
+  const needsVerify = role !== 'admin' && vstate !== 'verified' && vstate !== 'active'
   const verifyHref = verifyPath(role)
 
   return (

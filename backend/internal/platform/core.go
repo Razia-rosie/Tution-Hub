@@ -86,6 +86,24 @@ func requireActive(c *gin.Context) error {
 	return nil
 }
 
+// familyAccessGate keeps parents and students read-only until an administrator
+// approves their own verification: they cannot post tuition, request chats or
+// links, message, submit work or review until then. Support tickets, block
+// lists and their own profile photo stay available so they can still get help.
+func familyAccessGate(c *gin.Context) {
+	r := role(c)
+	if (r != "parent" && r != "student") || active(c) || c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead {
+		c.Next()
+		return
+	}
+	switch c.FullPath() {
+	case "/api/v1/support-tickets", "/api/v1/profile/photo", "/api/v1/users/:id/block":
+		c.Next()
+		return
+	}
+	c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "your account must be approved by an administrator before you can do this; check your verification page"})
+}
+
 // bind decodes and validates a JSON body.
 func (s *Service) bind(c *gin.Context, target any) error {
 	if err := c.ShouldBindJSON(target); err != nil {

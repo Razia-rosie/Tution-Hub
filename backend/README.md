@@ -237,6 +237,7 @@ DATABASE_URL="$E2E_DATABASE_URL" JWT_SECRET=... HTTP_ADDR=:8090 DOCUMENT_DIR=/tm
 E2E_API=http://localhost:8090 node tests/verification-e2e.mjs            # API end to end
 API_PROXY_TARGET=http://localhost:8090 PORT=5174 pnpm dev                 # frontend for the test API
 E2E_API=http://localhost:8090 node tests/platform-e2e.mjs                 # all role journeys over HTTP
+E2E_API=http://localhost:8090 node tests/family-e2e.mjs                   # parent and student verification over HTTP
 E2E_WEB=http://127.0.0.1:5174 node tests/browser-e2e.mjs                  # browser end to end (Chrome)
 E2E_WEB=http://127.0.0.1:5174 E2E_API=http://localhost:8090 node tests/journeys-browser.mjs  # cross-role journeys in the UI
 npx tsc --noEmit -p . && pnpm build                                       # type-check and production build

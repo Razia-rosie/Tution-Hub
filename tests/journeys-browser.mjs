@@ -60,8 +60,17 @@ async function main() {
   const admin = (await api('POST', '/api/v1/auth/login', null, { email: ADMIN_EMAIL, password: ADMIN_PASSWORD })).data.tokens.access_token
   const tutor = await register('tutor', 'tutor', `Rahim Tutor ${run}`)
   const parent = await register('parent', 'parent', `Salma Parent ${run}`)
-  const student = await register('student', 'student', `Ayaan Student ${run}`)
   const coaching = await register('coaching', 'coaching', `Bright Centre ${run}`)
+  // Parents and students are verified by hand; a student signs up only from an
+  // approved parent's invitation that an administrator allowed (family-e2e.mjs covers it in depth).
+  const familyDocs = [['parent_nid', 'id-card.png'], ['child_birth_certificate', 'id-card.png']]
+  await verify(admin, parent, familyDocs, { display_name: parent.name, address: 'Mirpur, Dhaka' })
+  const inviter = await register('inviter', 'parent', `Inviter ${run}`)
+  await verify(admin, inviter, familyDocs, { display_name: inviter.name, address: 'Uttara, Dhaka' })
+  const inv = await api('POST', '/api/v1/workflow/family/invitations', inviter.token, { child_email: email('student'), relationship: 'mother' })
+  await api('POST', `/api/v1/workflow/admin/student-invitations/${inv.data.invitation.id}/decision`, admin, { decision: 'approved' })
+  const student = await register('student', 'student', `Ayaan Student ${run}`)
+  await verify(admin, student, [['birth_certificate', 'id-card.png']], { display_name: student.name, birth_date: '2010-06-01', class_name: 'HSC', institution: 'Dhaka College' })
   await verify(admin, tutor, [['identity', 'id-card.png']], { display_name: tutor.name, education: 'BSc Physics', subjects: ['Physics'], classes: ['HSC'], areas: ['Uttara'] })
   await verify(admin, coaching, [['trade_license', 'id-card.png'], ['owner_identity', 'id-card.png']], { display_name: coaching.name, institution: `Bright ${run} Academy`, education: 'TRAD/1', subjects: ['Mathematics'], classes: ['SSC'], areas: ['Mirpur'] })
 
