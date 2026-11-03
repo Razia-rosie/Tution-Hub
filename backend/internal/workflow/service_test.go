@@ -137,3 +137,19 @@ func TestListVerificationsScansJSONColumns(t *testing.T) {
 		t.Fatalf("unexpected rows: %+v", rows)
 	}
 }
+
+func TestApprovalWaitsForScheduledInterview(t *testing.T) {
+	service, mock, closeDB := testWorkflowService(t)
+	defer closeDB()
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT v.user_id, v.status, u.role FROM verification_applications v")).WithArgs("app").
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "status", "role"}).AddRow("tutor", "pending", "tutor"))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM interviews WHERE application_id = ? AND status = 'scheduled'")).WithArgs("app").WillReturnRows(sqlmock.NewRows([]string{"n"}).AddRow(1))
+	mock.ExpectRollback()
+	if err := service.ReviewVerification(context.Background(), "admin", "app", "approved", ""); !errors.Is(err, ErrInterviewPending) {
+		t.Fatalf("expected ErrInterviewPending, got %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

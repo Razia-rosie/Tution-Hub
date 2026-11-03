@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import Verification from './Verification'
 import Family from './Family'
+import Messages from '../../features/Messages'
+import RealNotifications from '../../components/RealNotifications'
 import Overview from './Overview'
 import Users from './Users'
 import Audit from './Audit'
@@ -10,6 +12,9 @@ const MAP: Record<string, (sub: string) => ReactNode> = {
   overview: () => <Overview />,
   verification: () => <Verification />,
   family: (sub) => <Family sub={sub} />,
+  // Applicants' interview discussions and their confirmations reach the admin here.
+  messages: (sub) => <Messages sub={sub} basePath="/app/admin/messages" />,
+  notifications: () => <RealNotifications />,
   users: () => <Users />,
   tutors: () => <Users role="tutor" />,
   coaching: () => <Users role="coaching" />,

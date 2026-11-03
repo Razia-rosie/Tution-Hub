@@ -158,6 +158,7 @@ func TestStudentCannotBeApprovedBeforeParent(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT v.user_id, v.status, u.role FROM verification_applications v")).WithArgs("app").
 		WillReturnRows(sqlmock.NewRows([]string{"user_id", "status", "role"}).AddRow("student", "pending", "student"))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM interviews WHERE application_id = ? AND status = 'scheduled'")).WithArgs("app").WillReturnRows(sqlmock.NewRows([]string{"n"}).AddRow(0))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COALESCE((SELECT completion_percent")).WithArgs("student").WillReturnRows(sqlmock.NewRows([]string{"c"}).AddRow(0))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT i.parent_id, p.account_status AS parent_status")).WithArgs("student").
 		WillReturnRows(sqlmock.NewRows([]string{"parent_id", "parent_status", "parent_verification"}).AddRow("p", "pending", "pending"))

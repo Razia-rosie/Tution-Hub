@@ -90,7 +90,7 @@ func requireActive(c *gin.Context) error {
 // approves their own verification: they cannot post tuition, request chats or
 // links, message, submit work or review until then. Support tickets, block
 // lists and their own profile photo stay available so they can still get help.
-func familyAccessGate(c *gin.Context) {
+func (s *Service) familyAccessGate(c *gin.Context) {
 	r := role(c)
 	if (r != "parent" && r != "student") || active(c) || c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead {
 		c.Next()
@@ -100,6 +100,14 @@ func familyAccessGate(c *gin.Context) {
 	case "/api/v1/support-tickets", "/api/v1/profile/photo", "/api/v1/users/:id/block":
 		c.Next()
 		return
+	case "/api/v1/conversations/:id/messages", "/api/v1/conversations/:id/read":
+		// An applicant under review may still discuss their interview with an administrator.
+		var admins int
+		_ = s.db.GetContext(c.Request.Context(), &admins, `SELECT COUNT(*) FROM conversation_participants p JOIN users u ON u.id = p.user_id WHERE p.conversation_id = ? AND u.role = 'admin'`, c.Param("id"))
+		if admins > 0 {
+			c.Next()
+			return
+		}
 	}
 	c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "your account must be approved by an administrator before you can do this; check your verification page"})
 }

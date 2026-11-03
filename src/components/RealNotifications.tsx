@@ -4,6 +4,7 @@ import { Bell } from 'lucide-react'
 import { Button, Card, EmptyState } from './ui'
 import { getNotifications, markNotificationsRead, type AppNotification } from '../lib/api'
 import { useStore } from '../lib/store'
+import { verifyPath } from '../lib/nav'
 
 /** The signed-in user's notifications from the backend (verification decisions, interviews, account changes). */
 export default function RealNotifications() {
@@ -48,6 +49,7 @@ export default function RealNotifications() {
                   <p className="mt-1 text-xs text-gray-600">{new Date(n.created_at).toLocaleString()}</p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
+                  {n.kind.startsWith('interview_') && user && user.role !== 'admin' && <Button size="sm" onClick={() => { if (!n.read_at) void markNotificationsRead(n.id).then(() => window.dispatchEvent(new Event('notifications:changed'))).catch(() => {}); nav(verifyPath(user.role)) }}>View interview</Button>}
                   {n.conversation_id && <Button size="sm" variant="secondary" onClick={() => openMessage(n)}>Open message</Button>}
                   {!n.read_at && <Button size="sm" variant="tertiary" onClick={() => void markOne(n.id)}>Mark read</Button>}
                 </div>

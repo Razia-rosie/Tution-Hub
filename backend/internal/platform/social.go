@@ -228,6 +228,30 @@ func (s *Service) SendMessage(ctx context.Context, userID, conversationID, body 
 	if _, err = tx.ExecContext(ctx, `UPDATE conversation_participants SET last_read_at = UTC_TIMESTAMP(6) WHERE conversation_id = ? AND user_id = ?`, conversationID, userID); err != nil {
 		return m, err
 	}
+	// A conversation with an administrator is an applicant's interview discussion:
+	// each new message there also notifies the other side. The notification shares
+	// the message's id, so it opens this conversation.
+	var roles struct {
+		Sender string `db:"sender_role"`
+		Other  string `db:"other_role"`
+	}
+	if err = tx.GetContext(ctx, &roles, `SELECT (SELECT role FROM users WHERE id = ?) AS sender_role, (SELECT role FROM users WHERE id = ?) AS other_role`, userID, other); err != nil {
+		return m, err
+	}
+	if roles.Sender == "admin" || roles.Other == "admin" {
+		title := "New message from " + s.userName(ctx, userID)
+		if roles.Sender == "admin" {
+			title = "New message from the TuitionHub admin"
+		}
+		// Cut by characters, not bytes, so Bengali text is never split mid-character.
+		preview := body
+		if r := []rune(preview); len(r) > 160 {
+			preview = string(r[:160]) + "…"
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO notifications (id, user_id, kind, title, body) VALUES (?, ?, 'admin_message', ?, ?)`, m.ID, other, title, preview); err != nil {
+			return m, err
+		}
+	}
 	if err = tx.Commit(); err != nil {
 		return m, err
 	}

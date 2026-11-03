@@ -28,6 +28,7 @@ func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, service *Serv
 	api.GET("/relationships", relationships(service))
 	api.POST("/relationships", createRelationship(service))
 	api.GET("/tuition", requireActive(service, tuition(service)))
+	api.POST("/interview/confirm", confirmInterview(service))
 	api.GET("/family", family(service))
 	api.POST("/family/invitations", createInvitation(service))
 	api.POST("/family/invitations/:id/cancel", cancelInvitation(service))
@@ -39,6 +40,7 @@ func RegisterRoutes(r *gin.RouterGroup, authService *auth.Service, service *Serv
 	admin.POST("/verifications/:id/decision", reviewVerification(service))
 	admin.POST("/verifications/:id/interviews", scheduleInterview(service))
 	admin.POST("/verifications/:id/interviews/:interviewID/outcome", interviewOutcome(service))
+	admin.PUT("/verifications/:id/interviews/:interviewID", rescheduleInterview(service))
 	admin.GET("/verifications/:id/history", applicationHistory(service))
 	admin.GET("/stats", adminStats(service))
 	admin.GET("/users", adminUsers(service))
@@ -348,6 +350,9 @@ func reviewVerification(s *Service) gin.HandlerFunc {
 		} else if errors.Is(err, ErrParentNotApproved) {
 			c.JSON(http.StatusConflict, gin.H{"error": "a student can only be approved once the linked parent's own verification is approved"})
 			return
+		} else if errors.Is(err, ErrInterviewPending) {
+			c.JSON(http.StatusConflict, gin.H{"error": "mark the scheduled interview as completed (or cancel it) before the final approval"})
+			return
 		} else if err != nil {
 			serverError(c, "could not save review decision", err)
 			return
@@ -362,6 +367,7 @@ func scheduleInterview(s *Service) gin.HandlerFunc {
 			Mode           string    `json:"mode" binding:"required"`
 			ScheduledAt    time.Time `json:"scheduled_at" binding:"required"`
 			LocationOrLink string    `json:"location_or_link"`
+			Instructions   string    `json:"instructions"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "mode and scheduled_at are required"})
@@ -371,7 +377,7 @@ func scheduleInterview(s *Service) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "scheduled_at must be in the future"})
 			return
 		}
-		if err := s.CreateInterview(c.Request.Context(), userID(c), c.Param("id"), req.Mode, req.ScheduledAt.UTC().Format("2006-01-02 15:04:05.000000"), req.LocationOrLink); errors.Is(err, ErrInvalidState) {
+		if err := s.CreateInterview(c.Request.Context(), userID(c), c.Param("id"), req.Mode, req.ScheduledAt.UTC().Format("2006-01-02 15:04:05.000000"), req.LocationOrLink, trimInstructions(req.Instructions)); errors.Is(err, ErrInvalidState) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid interview mode"})
 			return
 		} else if errors.Is(err, ErrNotFound) {
@@ -379,6 +385,9 @@ func scheduleInterview(s *Service) gin.HandlerFunc {
 			return
 		} else if errors.Is(err, ErrConflict) {
 			c.JSON(http.StatusConflict, gin.H{"error": "interviews can only be scheduled for applications awaiting review"})
+			return
+		} else if errors.Is(err, ErrInterviewPending) {
+			c.JSON(http.StatusConflict, gin.H{"error": "an interview is already scheduled for this application; reschedule it instead"})
 			return
 		} else if err != nil {
 			serverError(c, "could not schedule interview", err)
@@ -579,6 +588,52 @@ func reviewInvitation(s *Service) gin.HandlerFunc {
 			c.JSON(http.StatusConflict, gin.H{"error": "this request has already been decided"})
 		case err != nil:
 			serverError(c, "could not save the decision", err)
+		default:
+			c.Status(http.StatusNoContent)
+		}
+	}
+}
+
+func confirmInterview(s *Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		confirmed, err := s.ConfirmInterview(c.Request.Context(), userID(c))
+		switch {
+		case errors.Is(err, ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "you have no scheduled interview to confirm"})
+		case err != nil:
+			serverError(c, "could not confirm the interview", err)
+		default:
+			c.JSON(http.StatusOK, gin.H{"confirmed": true, "already_confirmed": !confirmed})
+		}
+	}
+}
+
+func rescheduleInterview(s *Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Mode           string    `json:"mode" binding:"required"`
+			ScheduledAt    time.Time `json:"scheduled_at" binding:"required"`
+			LocationOrLink string    `json:"location_or_link"`
+			Instructions   string    `json:"instructions"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "mode and scheduled_at are required"})
+			return
+		}
+		if !req.ScheduledAt.After(time.Now()) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "scheduled_at must be in the future"})
+			return
+		}
+		err := s.RescheduleInterview(c.Request.Context(), userID(c), c.Param("id"), c.Param("interviewID"), req.Mode, req.ScheduledAt.UTC().Format("2006-01-02 15:04:05.000000"), strings.TrimSpace(req.LocationOrLink), trimInstructions(req.Instructions))
+		switch {
+		case errors.Is(err, ErrInvalidState):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid interview mode"})
+		case errors.Is(err, ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "interview not found"})
+		case errors.Is(err, ErrConflict):
+			c.JSON(http.StatusConflict, gin.H{"error": "only a scheduled interview can be rescheduled"})
+		case err != nil:
+			serverError(c, "could not reschedule the interview", err)
 		default:
 			c.Status(http.StatusNoContent)
 		}

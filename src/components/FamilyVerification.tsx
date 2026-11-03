@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, Clock, ImageUp, ShieldCheck, UserPlus, XCi
 import { useStore, type VerifyState } from '../lib/store'
 import { Button, Card, Chip, Field, Input, Select } from './ui'
 import { PageHead } from './tutor/bits'
+import InterviewCard from './InterviewCard'
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from '../lib/uploads'
 import { validEmail } from '../lib/validate'
 import {
@@ -144,6 +145,7 @@ export default function FamilyVerification({ role }: { role: Role }) {
     <div className="space-y-6">
       <PageHead title={role === 'parent' ? 'Parent verification' : 'Student verification'} tag={role === 'parent' ? 'PV-01' : 'SV-01'} sub="An administrator reviews your details and pictures by hand. Parent and student accounts are approved separately." actions={<Chip tone={stage.tone}>{stage.label}</Chip>} />
       <StatusBanner role={role} stage={stage.label} dashboard={dashboard} parent={parent} />
+      {dashboard?.interview && <InterviewCard interview={dashboard.interview} onChange={() => load()} />}
 
       <Card>
         <h2 className="text-lg">Where things stand</h2>

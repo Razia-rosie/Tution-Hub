@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Clock, ImageUp, ShieldCheck, XCircle } fro
 import { useStore, type VerifyState } from '../lib/store'
 import { Button, Card, Field, Input, StatusChip } from './ui'
 import { PageHead } from './tutor/bits'
+import InterviewCard from './InterviewCard'
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from '../lib/uploads'
 import { ApiError, effectiveStatus, fetchPrivateDocument, getWorkflowDashboard, submitVerification, updateProfile, uploadVerificationDocument, type DocumentRequirement, type WorkflowDashboard } from '../lib/api'
 
@@ -120,6 +121,7 @@ export default function RealVerification({ role }: { role: Role }) {
     <div className="space-y-6">
       <PageHead title="Verification Center" tag={copy.tag} sub="An administrator reviews your details and pictures by hand. Nothing is approved automatically." actions={<StatusChip state={status} />} />
       <StatusPanel status={status} dashboard={dashboard} />
+      {dashboard?.interview && <InterviewCard interview={dashboard.interview} onChange={() => load()} />}
       {error && (
         <Card className="border-danger-600 bg-danger-50">
           <p role="alert" className="text-sm text-danger-700">{error}</p>
