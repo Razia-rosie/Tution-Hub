@@ -229,7 +229,8 @@ export async function uploadVerificationDocument(documentType: string, file: Fil
   return parse<{ document: VerificationDocument }>(response)
 }
 
-export type AppNotification = { id: string; kind: string; title: string; body: string; read_at?: string | null; created_at: string }
+/** `conversation_id` is set when the notification has a matching message, such as an interview's meeting details. */
+export type AppNotification = { id: string; kind: string; title: string; body: string; read_at?: string | null; created_at: string; conversation_id?: string }
 
 export function getNotifications() {
   return authenticatedRequest<{ notifications: AppNotification[] | null }>('/api/v1/workflow/notifications')

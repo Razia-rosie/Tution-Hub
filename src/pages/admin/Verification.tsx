@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { Button, Card, Chip, Field, Input, Select, StatusChip, Textarea } from '../../components/ui'
 import { childStage, reviewStage } from '../../components/FamilyVerification'
-import { fetchPrivateDocument, getAdminApplications, getAdminDocuments, getApplicationHistory, recordAdminInterviewOutcome, reviewAdminApplication, scheduleAdminInterview, type AdminApplication, type AuditEntry } from '../../lib/api'
+import { fetchPrivateDocument, getAdminApplications, getAdminDocuments, getApplicationHistory, recordAdminInterviewOutcome, reviewAdminApplication, reviewStudentInvitation, scheduleAdminInterview, type AdminApplication, type AuditEntry, type StudentInvitation } from '../../lib/api'
 
 const STATUS_FILTERS = [
   { value: '', label: 'All submitted' },
@@ -126,7 +126,7 @@ export default function Verification({ fixedRole, title = 'Verification review' 
             <dl className="mt-2 grid gap-3 text-sm sm:grid-cols-2">{Object.entries(selected.profile ?? {}).filter(([, value]) => value !== null && value !== undefined).map(([key, value]) => <div key={key} className="min-w-0"><dt className="text-gray-600">{label(key).label}</dt><dd className="break-words font-medium">{Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd></div>)}</dl>
             {(selected.correction_request || selected.rejection_reason) && <div className="mt-4 rounded-input border border-warning-600 bg-warning-100 p-3 text-sm"><p className="font-semibold">{selected.rejection_reason ? 'Rejection reason' : 'Correction requested'}</p><p className="mt-1">{selected.rejection_reason ?? selected.correction_request}</p></div>}
 
-            {selected.family && <FamilyPanel application={selected} />}
+            {selected.family && <FamilyPanel application={selected} act={act} busy={busy} />}
 
             <section className="mt-6 border-t border-gray-100 pt-5">
               <h3 className="font-semibold">Pictures</h3>
@@ -183,21 +183,52 @@ export default function Verification({ fixedRole, title = 'Verification review' 
 }
 
 /** The other side of a family review: a parent's child requests, or a student's inviting parent. */
-function FamilyPanel({ application }: { application: AdminApplication }) {
+/** Admin labels for a child's registration request; once the child has registered, the student's own review stage. */
+function requestStage(inv: StudentInvitation) {
+  if (inv.status === 'pending_approval') return { label: 'Waiting for admin permission', tone: 'amber' as const }
+  if (inv.status === 'approved') return { label: 'Approved', tone: 'green' as const }
+  if (inv.status === 'rejected') return { label: 'Rejected', tone: 'red' as const }
+  return childStage(inv)
+}
+
+function FamilyPanel({ application, act, busy }: { application: AdminApplication; act: (fn: () => Promise<unknown>, success: string) => Promise<boolean>; busy: boolean }) {
   const family = application.family
+  const [rejecting, setRejecting] = useState<string | null>(null)
+  const [reason, setReason] = useState('')
   if (application.role === 'parent') {
     const invitations = family?.invitations ?? []
+    // Permission for the child is a separate decision, and only possible once the parent is approved.
+    const parentApproved = application.status === 'approved' && application.account_status === 'active'
+    const approve = (inv: StudentInvitation) => {
+      if (!window.confirm(`Allow ${inv.child_email} to register a student account linked to ${application.name}?`)) return
+      void act(() => reviewStudentInvitation(inv.id, 'approved', ''), `${inv.child_email} may now register as a student.`)
+    }
+    const reject = (inv: StudentInvitation) => {
+      if (!window.confirm(`Reject the student registration request for ${inv.child_email}?`)) return
+      void act(() => reviewStudentInvitation(inv.id, 'rejected', reason.trim()), `The request for ${inv.child_email} was rejected.`).then((ok) => { if (ok) { setRejecting(null); setReason('') } })
+    }
     return (
       <section className="mt-6 border-t border-gray-100 pt-5">
         <h3 className="font-semibold">Child student accounts</h3>
         {invitations.length === 0 && <p className="mt-2 text-sm text-gray-600">This parent has not submitted a child email yet.</p>}
-        <ul className="mt-2 space-y-2">{invitations.map((inv) => { const c = childStage(inv); return (
+        <ul className="mt-2 space-y-2">{invitations.map((inv) => { const c = requestStage(inv); const pending = inv.status === 'pending_approval'; return (
           <li key={inv.id} className="rounded-input border border-gray-200 p-3 text-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2"><span className="break-all font-semibold">{inv.child_email}{inv.child_name ? ` · ${inv.child_name}` : ''}</span><Chip tone={c.tone}>{c.label}</Chip></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><span className="break-all font-semibold">{inv.child_email}{inv.child_name ? ` · ${inv.child_name}` : ''}</span>
+              <span className="flex flex-wrap items-center gap-2"><Chip tone={c.tone}>{c.label}</Chip>
+                {pending && <><Button size="sm" loading={busy} disabled={!parentApproved} onClick={() => approve(inv)}>Approve</Button><Button size="sm" variant="destructive" disabled={busy} onClick={() => { setRejecting(rejecting === inv.id ? null : inv.id); setReason('') }}>Reject</Button></>}
+              </span>
+            </div>
             <p className="mt-1 text-xs text-gray-600">Requested {when(inv.created_at)} · {inv.relationship}{inv.student_name ? ` · registered as ${inv.student_name}` : ''}</p>
+            {inv.status === 'rejected' && inv.rejection_reason && <p className="mt-1 text-xs text-danger-700">Reason: {inv.rejection_reason}</p>}
+            {pending && !parentApproved && <p className="mt-1 text-xs text-warning-600">Approve this parent first; the child's request can be approved after that.</p>}
+            {pending && rejecting === inv.id && (
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                <Field label="Reason shown to the parent" hint="Required, at least 10 characters">{(id) => <Textarea id={id} value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
+                <Button size="sm" variant="destructive" loading={busy} disabled={reason.trim().length < 10} onClick={() => reject(inv)}>Confirm rejection</Button>
+              </div>
+            )}
           </li>
         ) })}</ul>
-        <p className="mt-2 text-xs text-gray-600">Student registration permission is granted separately under Parent &amp; Student Verification → Student registration requests, after this parent is approved.</p>
       </section>
     )
   }

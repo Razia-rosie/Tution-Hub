@@ -467,7 +467,8 @@ func (s *Service) RecordInterviewOutcome(ctx context.Context, reviewerID, interv
 		return err
 	}
 	var applicationID, currentStatus string
-	if err = tx.QueryRowxContext(ctx, `SELECT application_id, status FROM interviews WHERE id = ? FOR UPDATE`, interviewID).Scan(&applicationID, &currentStatus); err != nil {
+	var scheduledAt time.Time
+	if err = tx.QueryRowxContext(ctx, `SELECT application_id, status, scheduled_at FROM interviews WHERE id = ? FOR UPDATE`, interviewID).Scan(&applicationID, &currentStatus, &scheduledAt); err != nil {
 		_ = tx.Rollback()
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
@@ -494,6 +495,11 @@ func (s *Service) RecordInterviewOutcome(ctx context.Context, reviewerID, interv
 	}
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `INSERT INTO audit_logs (id, actor_id, subject_user_id, action, metadata) VALUES (?, ?, ?, ?, JSON_OBJECT('interview_id', ?, 'notes', ?))`, uuid.NewString(), reviewerID, userID, "interview_"+status, interviewID, notes)
+	}
+	if err == nil && status == "cancelled" {
+		// The applicant's notification and meeting message must not keep showing a cancelled interview as on.
+		date, clock := meetingWhen(scheduledAt)
+		err = deliverMeeting(ctx, tx, reviewerID, userID, "interview_cancelled", "Interview cancelled", "Your verification interview on "+date+" at "+clock+" was cancelled. Details are in your Messages.", interviewCancelledMessage(scheduledAt))
 	}
 	if err != nil {
 		_ = tx.Rollback()
@@ -551,7 +557,10 @@ func (s *Service) CreateInterview(ctx context.Context, reviewerID, applicationID
 		_, err = tx.ExecContext(ctx, `UPDATE users SET account_status = 'interview_scheduled' WHERE id = ?`, userID)
 	}
 	if err == nil {
-		_, err = tx.ExecContext(ctx, `INSERT INTO notifications (id, user_id, kind, title, body) VALUES (?, ?, 'interview_scheduled', 'Interview scheduled', 'An administrator scheduled your verification interview.')`, uuid.NewString(), userID)
+		var at time.Time
+		if at, err = time.Parse("2006-01-02 15:04:05.000000", scheduledAt); err == nil {
+			err = deliverMeeting(ctx, tx, reviewerID, userID, "interview_scheduled", "Interview scheduled", interviewScheduledNotification(mode, at), interviewScheduledMessage(mode, location, at))
+		}
 	}
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `INSERT INTO audit_logs (id, actor_id, subject_user_id, action, metadata) VALUES (?, ?, ?, 'interview_scheduled', JSON_OBJECT('application_id', ?, 'mode', ?, 'scheduled_at', ?))`, uuid.NewString(), reviewerID, userID, applicationID, mode, scheduledAt)
@@ -564,7 +573,12 @@ func (s *Service) CreateInterview(ctx context.Context, reviewerID, applicationID
 }
 
 func (s *Service) Notifications(ctx context.Context, userID string) ([]map[string]any, error) {
-	rows, err := s.db.QueryxContext(ctx, `SELECT id, kind, title, body, read_at, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100`, userID)
+	// A meeting notification shares its id with the message that carries the
+	// details; the conversation is returned only when this user takes part in it.
+	rows, err := s.db.QueryxContext(ctx, `SELECT n.id, n.kind, n.title, n.body, n.read_at, n.created_at, cp.conversation_id FROM notifications n
+		LEFT JOIN messages m ON m.id = n.id
+		LEFT JOIN conversation_participants cp ON cp.conversation_id = m.conversation_id AND cp.user_id = n.user_id
+		WHERE n.user_id = ? ORDER BY n.created_at DESC LIMIT 100`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -573,10 +587,15 @@ func (s *Service) Notifications(ctx context.Context, userID string) ([]map[strin
 	for rows.Next() {
 		var id, kind, title, body string
 		var readAt, createdAt *time.Time
-		if err := rows.Scan(&id, &kind, &title, &body, &readAt, &createdAt); err != nil {
+		var conversationID *string
+		if err := rows.Scan(&id, &kind, &title, &body, &readAt, &createdAt, &conversationID); err != nil {
 			return nil, err
 		}
-		result = append(result, map[string]any{"id": id, "kind": kind, "title": title, "body": body, "read_at": readAt, "created_at": createdAt})
+		item := map[string]any{"id": id, "kind": kind, "title": title, "body": body, "read_at": readAt, "created_at": createdAt}
+		if conversationID != nil {
+			item["conversation_id"] = *conversationID
+		}
+		result = append(result, item)
 	}
 	return result, rows.Err()
 }
