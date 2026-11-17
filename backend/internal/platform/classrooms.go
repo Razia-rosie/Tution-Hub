@@ -123,19 +123,21 @@ func (s *Service) CreateClassroom(ctx context.Context, ownerID, name, subject, d
 	return id, err
 }
 
+type ClassroomMember struct {
+	ID    string  `db:"id" json:"id"`
+	Name  string  `db:"name" json:"name"`
+	Class *string `db:"class_name" json:"class_name"`
+}
+
 type ClassroomDetail struct {
 	ClassroomSummary
-	Description *string `db:"description" json:"description"`
-	Access      string  `db:"-" json:"access"`
-	Members     []struct {
-		ID    string  `db:"id" json:"id"`
-		Name  string  `db:"name" json:"name"`
-		Class *string `db:"class_name" json:"class_name"`
-	} `db:"-" json:"members"`
-	Materials   []Material   `db:"-" json:"materials"`
-	Assignments []Assignment `db:"-" json:"assignments"`
-	Sessions    []Session    `db:"-" json:"sessions"`
-	Diary       []DiaryEntry `db:"-" json:"diary"`
+	Description *string           `db:"description" json:"description"`
+	Access      string            `db:"-" json:"access"`
+	Members     []ClassroomMember `db:"-" json:"members"`
+	Materials   []Material        `db:"-" json:"materials"`
+	Assignments []Assignment      `db:"-" json:"assignments"`
+	Sessions    []Session         `db:"-" json:"sessions"`
+	Diary       []DiaryEntry      `db:"-" json:"diary"`
 	// Invitations of a tuition classroom: who accepted and who is pending.
 	JoinRequests []JoinRequest `db:"-" json:"join_requests"`
 }
@@ -202,6 +204,8 @@ func (s *Service) ClassroomDetail(c *gin.Context, id string) (ClassroomDetail, e
 	if err = s.db.GetContext(ctx, &d, classroomSummarySelect+`, NULL AS child_name, c.description FROM classrooms c JOIN users o ON o.id = c.owner_id WHERE c.id = ?`, id); err != nil {
 		return d, err
 	}
+	// A tuition classroom has no members until the student accepts its invitation.
+	d.Members = []ClassroomMember{}
 	if err = s.db.SelectContext(ctx, &d.Members, `SELECT u.id, u.name, p.class_name FROM classroom_members m JOIN users u ON u.id = m.student_id LEFT JOIN role_profiles p ON p.user_id = u.id WHERE m.classroom_id = ? ORDER BY u.name`, id); err != nil {
 		return d, err
 	}

@@ -163,6 +163,8 @@ async function main() {
   check('access: pending student cannot open the classroom', (await GET(`/api/v1/classrooms/${room}`, student.token)).status === 404)
   check('access: pending guardian cannot open the classroom', (await GET(`/api/v1/classrooms/${room}`, parent.token)).status === 404)
   check('access: pending classroom not listed for the student', !(await GET('/api/v1/classrooms', student.token)).data.classrooms.some((c) => c.id === room))
+  const emptyRoom = (await GET(`/api/v1/classrooms/${room}`, tutor.token)).data
+  check('classroom: empty member list is [] before anyone joins (not null)', Array.isArray(emptyRoom.members) && emptyRoom.members.length === 0, JSON.stringify(emptyRoom.members))
   check('access: tutor sees pending invitations in the classroom', (await GET(`/api/v1/classrooms/${room}`, tutor.token)).data.join_requests?.filter((r) => r.status === 'pending').length === 2)
   check('join: tutor cannot accept for them', (await act(tutor, { action: 'accept_classroom' })).status === 403)
   check('join: outsider cannot accept', (await act(outsider, { action: 'accept_classroom' })).status === 404)

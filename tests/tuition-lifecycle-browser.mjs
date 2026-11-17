@@ -130,6 +130,14 @@ async function main() {
     await click(T, 'Create classroom')
     check('classroom: created, both invitations pending', await waitText(T, '2 classroom invitations pending') && (await text(T)).match(/Pending/g)?.length >= 2)
     check('classroom: create button gone (one per tuition)', !(await text(T)).includes('Create classroom'))
+    // Before anyone accepts, the classroom has no students; every tab must still render.
+    await click(T, 'Open classroom')
+    check('classroom: tutor opens it before anyone joins', await waitText(T, 'Classroom invitations') && !(await text(T)).includes('failed to render'))
+    for (const tab of ['Schedule', 'Attendance', 'Homework', 'Materials', 'Diary', 'Students', 'Progress']) {
+      await click(T, tab, { exact: true })
+      await wait(300)
+      check(`classroom: ${tab} tab renders with no students yet`, !(await text(T)).includes('failed to render'))
+    }
     await go(S, '/app/student/my-tuition')
     check('join: student sees the invitation', await waitText(S, 'Accept classroom invitation'))
     check('join: student cannot open the classroom yet', !(await text(S)).includes('Open classroom'))
